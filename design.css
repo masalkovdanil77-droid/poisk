@@ -617,6 +617,25 @@ input:focus {
     color: #ffd9c9;
 }
 
+.boot-error-close {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffece4;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.boot-error-close:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+
 .boot-error i {
     color: #ffc9b0;
     font-style: normal;

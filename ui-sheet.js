@@ -10,16 +10,20 @@
     // ---------- проверка, что всё загрузилось ----------
     // Если библиотеки или сам logic.js не загрузились, приложение выглядит
     // «зависшим» (видна только надпись «Проверка связи…»). Показываем причину.
-    (function checkBoot() {
+    // Проверяем библиотеки ПОСЛЕ полной загрузки: иначе можно пожаловаться
+    // на «не созданную карту» раньше, чем приложение успело её создать.
+    function checkBoot() {
         var missing = [];
         if (typeof L === 'undefined') missing.push('vendor/leaflet/leaflet.js — библиотека карты');
         if (typeof turf === 'undefined') missing.push('vendor/turf.min.js — расчёт площади');
         if (typeof qrcode !== 'function') missing.push('vendor/qrcode.min.js — QR-код плана');
         if (typeof jsQR !== 'function') missing.push('vendor/jsqr.min.js — сканер QR');
-        if (!document.querySelector('#map .leaflet-pane')) {
-            missing.push('сам logic.js — не создалась карта');
+        // если карта уже рисует плитки — значит всё работает, предупреждать не о чем
+        var tilesLoaded = document.querySelectorAll('#map img.leaflet-tile-loaded').length;
+        if (!window.__mapReady && tilesLoaded === 0) {
+            missing.push('logic.js — карта не появилась');
         }
-        if (!missing.length) return;
+        if (!missing.length || (tilesLoaded > 0 && missing.length === 0)) return;
 
         var badge = document.getElementById('network-status');
         if (badge) {
@@ -28,14 +32,29 @@
         }
         var box = document.createElement('div');
         box.className = 'boot-error';
-        box.innerHTML = '<b>Приложение загрузилось не полностью</b><br>' +
+        var fromReserve = Object.keys(window.__libSources || {}).some(function (k) {
+            return window.__libSources[k] === 'резервный адрес';
+        });
+        box.innerHTML = '<button class="boot-error-close" type="button" ' +
+            'aria-label="Закрыть">×</button>' +
+            '<b>Приложение загрузилось не полностью</b><br>' +
             missing.map(function (m) { return '• ' + m; }).join('<br>') +
             '<br><br>Проверьте, что на хостинг загружена папка <b>vendor</b> вместе с ' +
-            'подпапками и файлами. Для GitHub Pages нужен ещё пустой файл ' +
-            '<b>.nojekyll</b> в корне репозитория.';
+            'подпапками и файлами, и что обновлены все файлы приложения. Для GitHub Pages ' +
+            'нужен ещё пустой файл <b>.nojekyll</b> в корне репозитория.' +
+            (fromReserve ? '<br><br><i>Библиотеки подгружены с резервного адреса: ' +
+                'приложение работает, но без интернета ему будет тяжелее.</i>' : '');
+        box.addEventListener('click', function (e) {
+            if (e.target && e.target.classList.contains('boot-error-close')) box.remove();
+        });
         document.body.appendChild(box);
         console.log('[APP] не загружено:', missing.join(' | '));
-    })();
+    }
+    if (document.readyState === 'complete') {
+        setTimeout(checkBoot, 1200);
+    } else {
+        window.addEventListener('load', function () { setTimeout(checkBoot, 1200); });
+    }
 
     var sheet = document.getElementById('control-panel');
     if (!sheet) return;
