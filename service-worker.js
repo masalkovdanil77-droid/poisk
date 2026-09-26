@@ -7,7 +7,7 @@
    Поэтому без интернета карта будет пустой, но программа, маршрут,
    точки и навигатор (GPS) продолжат работать. */
 
-const CACHE = 'mchs-search-v6';
+const CACHE = 'mchs-search-v8';
 
 const ASSETS = [
   './',

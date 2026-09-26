@@ -8,7 +8,7 @@
     <meta http-equiv="Expires" content="0" />
     <title>Поиск людей в лесу — вероятные зоны и маршрут</title>
     <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#efe7dc" />
+    <meta name="theme-color" content="#1e1b18" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -18,7 +18,7 @@
          CDN, поэтому открывается и там, где они недоступны (частая причина
          «работает только с VPN»). -->
     <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
-    <link rel="stylesheet" href="design.css?v=51" />
+    <link rel="stylesheet" href="design.css?v=61" />
     <script src="vendor/leaflet/leaflet.js"></script>
     <script src="vendor/turf.min.js"></script>
     <script src="vendor/jsqr.min.js"></script>
@@ -206,6 +206,7 @@
                 <div class="stat"><span class="stat-label">Периметр</span><strong id="stat-perimeter">0</strong><span class="stat-unit">м</span></div>
                 <div class="stat"><span class="stat-label">Площадь</span><strong id="stat-area">0</strong><span class="stat-unit">км²</span></div>
                 <div class="stat"><span class="stat-label">Длина пути</span><strong id="stat-distance">0.00</strong><span class="stat-unit">км</span></div>
+                <div class="stat"><span class="stat-label">Расчёт зон</span><strong id="stat-calc">0.00</strong><span class="stat-unit">с</span></div>
                 <div class="stat"><span class="stat-label">Матрица</span><strong id="stat-matrix-time">0.00</strong><span class="stat-unit">с</span></div>
                 <div class="stat"><span class="stat-label">Оптимизация</span><strong id="stat-opt-time">0.00</strong><span class="stat-unit">с</span></div>
                 <div class="stat"><span class="stat-label">Режим</span><strong id="stat-device">—</strong></div>
@@ -244,7 +245,7 @@
 </div><!-- /app-body -->
 
 <script src="vendor/qrcode.min.js"></script>
-<script src="logic.js?v=100"></script>
-<script src="ui-sheet.js?v=6"></script>
+<script src="logic.js?v=120"></script>
+<script src="ui-sheet.js?v=7"></script>
 </body>
 </html>

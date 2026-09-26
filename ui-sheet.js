@@ -7,6 +7,36 @@
 (function () {
     'use strict';
 
+    // ---------- проверка, что всё загрузилось ----------
+    // Если библиотеки или сам logic.js не загрузились, приложение выглядит
+    // «зависшим» (видна только надпись «Проверка связи…»). Показываем причину.
+    (function checkBoot() {
+        var missing = [];
+        if (typeof L === 'undefined') missing.push('vendor/leaflet/leaflet.js — библиотека карты');
+        if (typeof turf === 'undefined') missing.push('vendor/turf.min.js — расчёт площади');
+        if (typeof qrcode !== 'function') missing.push('vendor/qrcode.min.js — QR-код плана');
+        if (typeof jsQR !== 'function') missing.push('vendor/jsqr.min.js — сканер QR');
+        if (!document.querySelector('#map .leaflet-pane')) {
+            missing.push('сам logic.js — не создалась карта');
+        }
+        if (!missing.length) return;
+
+        var badge = document.getElementById('network-status');
+        if (badge) {
+            badge.textContent = 'Нет файлов приложения';
+            badge.classList.add('offline');
+        }
+        var box = document.createElement('div');
+        box.className = 'boot-error';
+        box.innerHTML = '<b>Приложение загрузилось не полностью</b><br>' +
+            missing.map(function (m) { return '• ' + m; }).join('<br>') +
+            '<br><br>Проверьте, что на хостинг загружена папка <b>vendor</b> вместе с ' +
+            'подпапками и файлами. Для GitHub Pages нужен ещё пустой файл ' +
+            '<b>.nojekyll</b> в корне репозитория.';
+        document.body.appendChild(box);
+        console.log('[APP] не загружено:', missing.join(' | '));
+    })();
+
     var sheet = document.getElementById('control-panel');
     if (!sheet) return;
 

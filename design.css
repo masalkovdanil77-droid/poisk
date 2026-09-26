@@ -43,11 +43,6 @@ body.theme-dark {
     --shadow-lg: 0 -2px 14px rgba(0, 0, 0, 0.5);
 }
 
-/* В тёмной теме карта приглушается, чтобы не била по глазам вечером */
-body.theme-dark #map .leaflet-tile-pane {
-    filter: brightness(0.68) saturate(0.72) contrast(1.04);
-}
-
 * {
     margin: 0;
     padding: 0;
@@ -600,6 +595,53 @@ input:focus {
     color: #0d652d;
 }
 
+/* Баннер, если не загрузились файлы приложения */
+.boot-error {
+    position: fixed;
+    z-index: 200;
+    top: calc(72px + env(safe-area-inset-top));
+    left: 12px;
+    right: 12px;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    background: #5a1f14;
+    color: #ffece4;
+    font-size: 13px;
+    line-height: 1.5;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+.boot-error b {
+    color: #ffd9c9;
+}
+
+.boot-error i {
+    color: #ffc9b0;
+    font-style: normal;
+}
+
+#network-status.checking {
+    background: var(--surface-2);
+    color: var(--text-dim);
+}
+
+#network-status.offline {
+    background: #f2d9d2;
+    color: #8c2f1c;
+}
+
+body.theme-dark #network-status.offline {
+    background: #4a2318;
+    color: #f0b6a2;
+}
+
+body.theme-dark #network-status.checking {
+    background: var(--surface-2);
+    color: var(--text-dim);
+}
+
 /* Тепловая карта */
 .leaflet-heatmap-legend {
     background: var(--surface);
@@ -797,12 +839,14 @@ input:focus {
 
 .leaflet-control-zoom {
     border: none !important;
+    background: transparent !important;
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
 
-.leaflet-control-zoom a {
+.leaflet-control-zoom a,
+.leaflet-bar a {
     width: 40px !important;
     height: 40px !important;
     line-height: 40px !important;
@@ -815,8 +859,10 @@ input:focus {
     border: none !important;
 }
 
-.leaflet-control-zoom a:hover {
+.leaflet-control-zoom a:hover,
+.leaflet-bar a:hover {
     background: var(--surface-2) !important;
+    color: var(--accent) !important;
 }
 
 .leaflet-control-attribution {

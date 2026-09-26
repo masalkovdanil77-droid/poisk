@@ -4,6 +4,32 @@
 //  оптимизация маршрута (TSP) в Web Worker.
 // ============================================================
 
+// ---------- 0. ПРОВЕРКА БИБЛИОТЕК ----------
+// Если папка vendor не загрузилась на хостинг, карта не создастся и приложение
+// молча «зависнет». Поэтому сначала предупреждаем понятным текстом.
+function showBootError(missing) {
+    console.log('[APP] НЕ ЗАГРУЖЕНЫ ФАЙЛЫ:', missing.join(', '));
+    const badge = document.getElementById('network-status');
+    if (badge) {
+        badge.textContent = 'Нет файлов приложения';
+        badge.classList.add('offline');
+    }
+    const box = document.createElement('div');
+    box.className = 'boot-error';
+    box.innerHTML = '<b>Не загрузились файлы приложения</b><br>' +
+        missing.map(function (m) { return '• ' + m; }).join('<br>') +
+        '<br><br>Проверьте, что папка <b>vendor</b> и её подпапки загружены на хостинг ' +
+        '(файлы должны открываться по адресу сайта, например ' +
+        '<i>ваш-сайт/vendor/leaflet/leaflet.js</i>). Если сайт выложен на GitHub Pages, ' +
+        'нужен ещё пустой файл <b>.nojekyll</b> в корне.';
+    document.body.appendChild(box);
+}
+
+if (typeof L === 'undefined') {
+    showBootError(['vendor/leaflet/leaflet.js — библиотека карты']);
+    throw new Error('Leaflet не загружен');
+}
+
 // ---------- 1. КАРТА ----------
 console.log('[APP] v81');
 // Кнопки зума и подпись карты размещаем сами: на телефоне снизу мешает
@@ -156,19 +182,66 @@ let lastRoute = null;   // последний маршрут (для экспо�
 let routePoints = [];   // точки маршрута = авто-зоны + ручные точки [{lat, lng, score}]
 
 // ---------- 3. СЕТЬ / СТАТУС ----------
-function updateNetworkStatus() {
+// Показываем состояние сразу (по данным браузера) и потом уточняем настоящей
+// проверкой: скачиваем маленький файл с нашего же сайта. Так надпись
+// «Проверка связи…» не может «зависнуть» навсегда.
+let netCheckBusy = false;
+
+function setNetBadge(text, cls) {
     const badge = document.getElementById('network-status');
-    if (navigator.onLine) {
-        badge.textContent = 'Режим: Онлайн';
-        badge.style.backgroundColor = '#10b981';
-    } else {
-        badge.textContent = 'Режим: Офлайн (приближённо)';
-        badge.style.backgroundColor = '#dc2626';
-    }
+    if (!badge) return;
+    badge.textContent = text;
+    badge.classList.toggle('offline', cls === 'offline');
+    badge.classList.toggle('checking', cls === 'checking');
 }
+
+function updateNetworkStatus() {
+    // мгновенно — по признаку браузера
+    setNetBadge(navigator.onLine ? 'Онлайн' : 'Нет сети', navigator.onLine ? '' : 'offline');
+    checkConnection();
+}
+
+function checkConnection() {
+    if (netCheckBusy) return;
+    netCheckBusy = true;
+    const started = Date.now();
+    let finished = false;
+    const timer = setTimeout(function () {
+        if (finished) return;
+        finished = true;
+        netCheckBusy = false;
+        // за 5 секунд не ответило: если браузер считает, что сеть есть — связь слабая
+        setNetBadge(navigator.onLine ? 'Связь слабая' : 'Нет сети', 'offline');
+    }, 5000);
+
+    // проверяем свой же сайт: файл манифеста всегда есть и весит мало
+    fetch('manifest.json?ping=' + Date.now(), { cache: 'no-store' })
+        .then(function (r) {
+            finished = true;
+            clearTimeout(timer);
+            netCheckBusy = false;
+            if (r && r.ok) {
+                setNetBadge('Онлайн', '');
+                console.log('[NET] связь есть, ответ за ' + (Date.now() - started) + ' мс');
+            } else {
+                setNetBadge('Нет сети', 'offline');
+            }
+        })
+        .catch(function (e) {
+            finished = true;
+            clearTimeout(timer);
+            netCheckBusy = false;
+            // service worker мог отдать файл из кэша — тогда считаем, что связь есть
+            setNetBadge(navigator.onLine ? 'Онлайн (из кэша)' : 'Нет сети',
+                navigator.onLine ? '' : 'offline');
+            console.log('[NET] проверка не прошла:', e && e.message);
+        });
+}
+
 window.addEventListener('online', updateNetworkStatus);
 window.addEventListener('offline', updateNetworkStatus);
 updateNetworkStatus();
+setInterval(function () { if (!navigator.onLine) updateNetworkStatus(); }, 15000);
 
 // ---------- 4. ГЕОМЕТРИЯ ----------
 function isPointInPolygon(lat, lng, polyPoints) {
@@ -1534,29 +1607,204 @@ function radialWeight(profile, scale, dKm) {
 // родников, опушек; глухой лес без объектов — базовый множитель ~0.6.
 // Дополнительные усиления: ПЕРЕКРЁСТКИ линейной сети (человек меняет
 // направление/выходит на пересечение) и ВЫШКИ связи (человек идёт «на сигнал»).
+
+// ---------- 9.1 ПРОСТРАНСТВЕННЫЙ ИНДЕКС ОБЪЕКТОВ (скорость) ----------
+// Раньше для КАЖДОЙ ячейки сетки перебирались ВСЕ объекты района: на районе
+// 10×10 км с 8 000 отрезков это ~96 миллионов операций — на телефоне считалось
+// бы десятки секунд. Теперь объекты разложены по клеткам сетки 300 м, и для
+// ячейки проверяются только соседние клетки (радиус 900 м): притяжение дальше
+// этого всё равно почти ноль (exp(-900/250) ≈ 0,03).
+const INDEX_CELL_M = 300;      // размер клетки индекса
+const INDEX_RADIUS_M = 700;    // радиус поиска объектов вокруг ячейки
+let terrainIndex = null;
+
+function buildFeatureIndex(terrain, polygonPoints) {
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    for (const p of polygonPoints) {
+        if (p.lat < minLat) minLat = p.lat;
+        if (p.lat > maxLat) maxLat = p.lat;
+        if (p.lng < minLng) minLng = p.lng;
+        if (p.lng > maxLng) maxLng = p.lng;
+    }
+    // запас: объекты чуть за границей зоны тоже притягивают
+    const padLat = 2500 / 111320;
+    const midLat = (minLat + maxLat) / 2;
+    const padLng = 2500 / (111320 * Math.cos(midLat * Math.PI / 180));
+    minLat -= padLat; maxLat += padLat; minLng -= padLng; maxLng += padLng;
+
+    const dLat = INDEX_CELL_M / 111320;
+    const dLng = INDEX_CELL_M / (111320 * Math.cos(midLat * Math.PI / 180));
+    const grid = new Map();
+    const cellKey = function (r, c) { return r + ',' + c; };
+    const rowOf = function (lat) { return Math.floor((lat - minLat) / dLat); };
+    const colOf = function (lng) { return Math.floor((lng - minLng) / dLng); };
+
+    const cell = function (r, c) {
+        const k = cellKey(r, c);
+        let e = grid.get(k);
+        if (!e) { e = { segs: [], pts: [] }; grid.set(k, e); }
+        return e;
+    };
+
+    let segId = 0, ptId = 0;
+
+    // отрезок кладём во все клетки, которые он пересекает (по его рамке).
+    // У каждого отрезка есть номер: длинные дороги попадают в десятки клеток,
+    // и при обходе соседей мы проверяем такой отрезок только один раз.
+    const addSeg = function (group, a, b) {
+        const r1 = rowOf(Math.min(a.lat, b.lat)), r2 = rowOf(Math.max(a.lat, b.lat));
+        const c1 = colOf(Math.min(a.lng, b.lng)), c2 = colOf(Math.max(a.lng, b.lng));
+        const id = segId++;
+        for (let r = r1; r <= r2; r++) {
+            for (let c = c1; c <= c2; c++) cell(r, c).segs.push({ g: group, a: a, b: b, id: id });
+        }
+    };
+    const addLine = function (group, lines) {
+        for (const line of lines || []) {
+            for (let i = 0; i + 1 < line.length; i++) addSeg(group, line[i], line[i + 1]);
+        }
+    };
+    const addPoly = function (group, polys) {
+        for (const poly of polys || []) {
+            for (let i = 0; i < poly.length; i++) addSeg(group, poly[i], poly[(i + 1) % poly.length]);
+        }
+    };
+    const addPoints = function (group, pts) {
+        for (const p of pts || []) {
+            if (p.lat == null) continue;
+            cell(rowOf(p.lat), colOf(p.lng)).pts.push({ g: group, lat: p.lat, lng: p.lng, id: ptId++ });
+        }
+    };
+
+    addLine('trail', terrain.trails);
+    addLine('river', terrain.rivers);
+    addLine('power', terrain.powerlines);
+    addLine('rail', terrain.railways);
+    addLine('aband', terrain.abandonedRailways);
+    addLine('clear', terrain.clearings);
+    addPoly('bank', terrain.water);
+    addPoly('bank', terrain.wetlands);
+    addPoly('forest', terrain.forests);
+    addPoints('hut', terrain.huts);
+    addPoints('spring', terrain.springs);
+    addPoints('tower', terrain.towers);
+    addPoints('gate', terrain.gates);
+    addPoints('parking', terrain.parkings);
+    addPoints('rest', terrain.rests);
+    addPoints('junction', terrain.junctions);
+
+    return {
+        minLat: minLat, minLng: minLng, dLat: dLat, dLng: dLng,
+        grid: grid, cells: grid.size,
+        segCount: segId, ptCount: ptId,
+        segSeen: new Int32Array(segId), ptSeen: new Int32Array(ptId), stamp: 0
+    };
+}
+
+// Собирает объекты вокруг точки (одна ячейка = один проход по клеткам)
+function collectNear(lat, lng) {
+    const idx = terrainIndex;
+    const out = { bank: [], trail: [], river: [], power: [], rail: [], aband: [], clear: [],
+                  forest: [], hut: [], spring: [], tower: [], gate: [], parking: [], rest: [], junction: [] };
+    // номер запроса: по нему понимаем, что объект уже добавлен в этом проходе
+    const stamp = ++idx.stamp;
+    const r0 = Math.floor((lat - INDEX_RADIUS_M / 111320 - idx.minLat) / idx.dLat);
+    const r1 = Math.floor((lat + INDEX_RADIUS_M / 111320 - idx.minLat) / idx.dLat);
+    const cosLat = Math.cos(lat * Math.PI / 180);
+    const dLngM = INDEX_RADIUS_M / (111320 * cosLat);
+    const c0 = Math.floor((lng - dLngM - idx.minLng) / idx.dLng);
+    const c1 = Math.floor((lng + dLngM - idx.minLng) / idx.dLng);
+    for (let r = r0; r <= r1; r++) {
+        for (let c = c0; c <= c1; c++) {
+            const e = idx.grid.get(r + ',' + c);
+            if (!e) continue;
+            for (let i = 0; i < e.segs.length; i++) {
+                const sg = e.segs[i];
+                if (idx.segSeen[sg.id] === stamp) continue;   // уже проверяли в этом проходе
+                idx.segSeen[sg.id] = stamp;
+                out[sg.g].push(sg);
+            }
+            for (let i = 0; i < e.pts.length; i++) {
+                const pt = e.pts[i];
+                if (idx.ptSeen[pt.id] === stamp) continue;
+                idx.ptSeen[pt.id] = stamp;
+                out[pt.g].push(pt);
+            }
+        }
+    }
+    return out;
+}
+
+// Минимальное расстояние от точки до группы отрезков
+function nearestSegDist(segs, lat, lng) {
+    let minD = Infinity;
+    for (let i = 0; i < segs.length; i++) {
+        const d = pointToSegmentDistance(lat, lng, segs[i].a, segs[i].b);
+        if (d < minD) minD = d;
+    }
+    return minD;
+}
+
+// Минимальное расстояние до ближайшей одиночной точки из группы
+function nearestPtDist(pts, lat, lng) {
+    let minD = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+        const d = getHaversineDistance({ lat: lat, lng: lng }, pts[i]);
+        if (d < minD) minD = d;
+    }
+    return minD;
+}
+
+// Дальность, которая считается «далеко» (притяжения практически нет)
+const FAR_M = INDEX_RADIUS_M;
+
 function landMultiplier(cell, terrain) {
     if (!terrain) return 1;
     const lat = cell.lat, lng = cell.lng;
-    const bankDist = Math.min(
-        distanceToNearestBank(lat, lng, terrain.water),
-        distanceToNearestBank(lat, lng, terrain.wetlands)
-    );
-    const railwayDist = distanceToNearestTrail(lat, lng, terrain.railways);
-    const powerlineDist = distanceToNearestTrail(lat, lng, terrain.powerlines);
-    const trailDist = distanceToNearestTrail(lat, lng, terrain.trails);
-    const abandonedDist = distanceToNearestTrail(lat, lng, terrain.abandonedRailways);
-    const riverDist = distanceToNearestTrail(lat, lng, terrain.rivers);
-    const hutDist = distanceToNearestPoint(lat, lng, terrain.huts);
-    const edgeDist = distanceToNearestBank(lat, lng, terrain.forests);
-    const springDist = distanceToNearestPoint(lat, lng, terrain.springs);
-    const clearingDist = distanceToNearestTrail(lat, lng, terrain.clearings);
-    const junctionDist = distanceToNearestPoint(lat, lng, terrain.junctions);
-    const towerDist = distanceToNearestPoint(lat, lng, terrain.towers);
-    // Новые ориентиры: ворота/шлагбаум (конец дороги), лесная стоянка (машина),
-    // места отдыха (костровища, туалеты) — слабее, но тоже притягивают.
-    const gateDist = distanceToNearestPoint(lat, lng, terrain.gates);
-    const parkingDist = distanceToNearestPoint(lat, lng, terrain.parkings);
-    const restDist = distanceToNearestPoint(lat, lng, terrain.rests);
+
+    let bankDist, railwayDist, powerlineDist, trailDist, abandonedDist, riverDist,
+        hutDist, edgeDist, springDist, clearingDist, junctionDist, towerDist,
+        gateDist, parkingDist, restDist;
+
+    if (terrainIndex) {
+        // быстрый путь: берём только объекты из соседних клеток индекса
+        const n = collectNear(lat, lng);
+        bankDist = nearestSegDist(n.bank, lat, lng);
+        railwayDist = nearestSegDist(n.rail, lat, lng);
+        powerlineDist = nearestSegDist(n.power, lat, lng);
+        trailDist = nearestSegDist(n.trail, lat, lng);
+        abandonedDist = nearestSegDist(n.aband, lat, lng);
+        riverDist = nearestSegDist(n.river, lat, lng);
+        clearingDist = nearestSegDist(n.clear, lat, lng);
+        edgeDist = nearestSegDist(n.forest, lat, lng);
+        hutDist = nearestPtDist(n.hut, lat, lng);
+        springDist = nearestPtDist(n.spring, lat, lng);
+        junctionDist = nearestPtDist(n.junction, lat, lng);
+        towerDist = nearestPtDist(n.tower, lat, lng);
+        gateDist = nearestPtDist(n.gate, lat, lng);
+        parkingDist = nearestPtDist(n.parking, lat, lng);
+        restDist = nearestPtDist(n.rest, lat, lng);
+    } else {
+        // медленный путь (если индекс не построен): полный перебор объектов
+        bankDist = Math.min(
+            distanceToNearestBank(lat, lng, terrain.water),
+            distanceToNearestBank(lat, lng, terrain.wetlands)
+        );
+        railwayDist = distanceToNearestTrail(lat, lng, terrain.railways);
+        powerlineDist = distanceToNearestTrail(lat, lng, terrain.powerlines);
+        trailDist = distanceToNearestTrail(lat, lng, terrain.trails);
+        abandonedDist = distanceToNearestTrail(lat, lng, terrain.abandonedRailways);
+        riverDist = distanceToNearestTrail(lat, lng, terrain.rivers);
+        hutDist = distanceToNearestPoint(lat, lng, terrain.huts);
+        edgeDist = distanceToNearestBank(lat, lng, terrain.forests);
+        springDist = distanceToNearestPoint(lat, lng, terrain.springs);
+        clearingDist = distanceToNearestTrail(lat, lng, terrain.clearings);
+        junctionDist = distanceToNearestPoint(lat, lng, terrain.junctions);
+        towerDist = distanceToNearestPoint(lat, lng, terrain.towers);
+        gateDist = distanceToNearestPoint(lat, lng, terrain.gates);
+        parkingDist = distanceToNearestPoint(lat, lng, terrain.parkings);
+        restDist = distanceToNearestPoint(lat, lng, terrain.rests);
+    }
 
     // Плавное затухание притяжения: ~1.0 на объекте, ~0.5 на 170 м,
     // ~0.1 на 500 м, почти 0 дальше ~1 км (полоса поиска 30–100 м).
@@ -2278,14 +2526,10 @@ function renderZones(zones) {    clearZones();
             zoneMarkers.push(marker);
         }
 
-        // 3. элемент списка (с буквой группы, если точки уже поделены)
-        const grp = (typeof z.group === 'number' && z.group >= 0 && typeof GROUP_NAMES !== 'undefined')
-            ? '<span class="zone-group" style="background:' + GROUP_COLORS[z.group % GROUP_COLORS.length] + '">' +
-              GROUP_NAMES[z.group] + '</span>'
-            : '';
+        // 3. элемент списка
         const item = document.createElement('div');
         item.className = 'zone-item';
-        item.innerHTML = grp + '<span class="zone-num">Точка ' + (i + 1) + '</span><span class="zone-pct">' + probText + '</span><span class="zone-coord">' + z.lat.toFixed(3) + ', ' + z.lng.toFixed(3) + '</span>';
+        item.innerHTML = '<span class="zone-num">Точка ' + (i + 1) + '</span><span class="zone-pct">' + probText + '</span><span class="zone-coord">' + z.lat.toFixed(3) + ', ' + z.lng.toFixed(3) + '</span>';
         item.addEventListener('click', () => map.panTo([z.lat, z.lng]));
         // Кнопка удаления точки прямо в списке
         const del = document.createElement('button');
@@ -2373,6 +2617,11 @@ document.getElementById('find-zones-btn').addEventListener('click', async functi
         // Склеиваем дубли в пределах 40 м, чтобы один перекрёсток = один узел
         terrain.junctions = clusterJunctions(mergeJunctions(j2, crossSegmentsAll(netLines)), 40);
         lastTerrain = terrain;
+        // индекс объектов для быстрого расчёта вероятностей
+        const idxStart = performance.now();
+        terrainIndex = buildFeatureIndex(terrain, polygonPoints);
+        console.log('[APP] Индекс объектов: ' + terrainIndex.cells + ' клеток по ' +
+            INDEX_CELL_M + ' м, построен за ' + Math.round(performance.now() - idxStart) + ' мс');
         const hasTerrain = terrain.trails.length + terrain.forests.length + terrain.water.length +
             terrain.powerlines.length + terrain.railways.length + terrain.rivers.length > 0;
         console.log('Террейн:', terrain.trails.length, 'троп,', terrain.forests.length, 'лесов,',
@@ -2415,6 +2664,7 @@ document.getElementById('find-zones-btn').addEventListener('click', async functi
         console.log('[APP] Профиль:', prof.label, '| часов с момента пропажи:', hours, '| scale:', tScale.toFixed(3), '| радиус поиска:', searchRadiusKm.toFixed(2), 'км');
 
         let totalMass = 0, maxRaw = 0;
+        const calcStart = performance.now();
         for (const c of cells) {
             let rho = 1;
             if (entryPoint) {
@@ -2426,6 +2676,12 @@ document.getElementById('find-zones-btn').addEventListener('click', async functi
             totalMass += c.raw;
             if (c.raw > maxRaw) maxRaw = c.raw;
         }
+        const calcSec = (performance.now() - calcStart) / 1000;
+        const calcEl = document.getElementById('stat-calc');
+        if (calcEl) calcEl.textContent = calcSec.toFixed(2);
+        console.log('[APP] Расчёт вероятностей: ' + calcSec.toFixed(2) + ' с на ' + cells.length +
+            ' ячеек (' + terrainIndex.cells + ' клеток индекса)');
+
         // Защита от деления на ноль (например, вся масса вне полигона)
         if (maxRaw <= 0 || totalMass <= 0) {
             for (const c of cells) c.raw = 1;
@@ -2758,40 +3014,6 @@ function drawRoute(route, bestDist) {
     document.getElementById('stat-distance').textContent = (bestDist / 1000).toFixed(2);
 }
 
-// ---------- 16.5. ЭКСПОРТ GPX ----------
-function exportGpx() {
-    if (!lastRoute || routePoints.length === 0) {
-        alert('Сначала найдите зоны и постройте маршрут!');
-        return;
-    }
-    var NL = String.fromCharCode(10);
-    var parts = [];
-    parts.push('<?xml version="1.0" encoding="UTF-8"?>');
-    parts.push('<gpx version="1.1" creator="MCHS-Search" xmlns="http://www.topografix.com/GPX/1/1">');
-    parts.push('<trk><name>Поисковый маршрут</name><trkseg>');
-    for (var ri = 0; ri < lastRoute.length; ri++) {
-        var idx = lastRoute[ri];
-        parts.push('<trkpt lat="' + routePoints[idx].lat.toFixed(6) + '" lon="' + routePoints[idx].lng.toFixed(6) + '"/>');
-    }
-    parts.push('</trkseg></trk>');
-    parts.push('</gpx>');
-    var gpx = parts.join(NL);
-
-    var blob = new Blob([gpx], { type: 'application/gpx+xml' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'poisk.gpx';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-}
-
-// Кнопка «Скачать трек» теперь обрабатывается в разделе 24 (экспорт всех групп).
-// Старый одиночный экспорт оставлен функцией exportGpx() на случай вызова из кода.
-
-
 // ---------- 17. ГЕОЛОКАЦИЯ ----------
 window.addEventListener('load', function () { setTimeout(function () { map.invalidateSize(); }, 100); });
 
@@ -2825,238 +3047,6 @@ if (navigator.geolocation) {
     refreshProfileHint();
 })();
 
-
-// ============================================================
-// 20. НАВИГАТОР (GPS): текущее положение, пройденный путь, азимут
-// ------------------------------------------------------------
-// Работает без интернета: координаты берёт GPS-чип телефона.
-// ВАЖНО 1: браузер разрешает геолокацию только на защищённом адресе
-//   (https:// или http://localhost). На телефоне приложение нужно
-//   открывать по https (например, с бесплатного хостинга) — иначе
-//   кнопка «Включить навигатор» сообщит об ограничении.
-// ВАЖНО 2: браузер НЕ записывает трек при выключенном экране — это
-//   ограничение самих браузеров, а не программы. Для записи «в кармане»
-//   нужно обычное (нативное) приложение.
-// ============================================================
-
-let navWatchId = null;
-let navTrack = [];              // {lat, lng, acc, ele, time}
-let navLayer = null;            // слой для трека и маркера
-let navMarker = null;
-let navAccCircle = null;
-let navPolyline = null;
-let navStartTs = null;
-let navLastFix = null;
-let navWakeLock = null;
-let navTimer = null;
-const NAV_MAX_ACCURACY = 60;    // точки с точностью хуже 60 м в трек не пишем
-
-function navEl(id) { return document.getElementById(id); }
-
-function navSetStatus(html, on) {
-    const el = navEl('nav-status');
-    if (!el) return;
-    el.innerHTML = html;
-    if (on) { el.classList.add('on'); } else { el.classList.remove('on'); }
-}
-
-function navTrackLengthM() {
-    let d = 0;
-    for (let i = 1; i < navTrack.length; i++) {
-        d += getHaversineDistance(navTrack[i - 1], navTrack[i]);
-    }
-    return d;
-}
-
-function navFmtDuration(ms) {
-    const s = Math.max(0, Math.floor(ms / 1000));
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const ss = s % 60;
-    return (h > 0 ? h + ' ч ' : '') + m + ' мин ' + ss + ' с';
-}
-
-// Ближайшая найденная точка поиска и азимут на неё
-function navNearestTarget(pos) {
-    if (!zones || !zones.length) return null;
-    let best = null, bestD = Infinity;
-    for (const z of zones) {
-        const d = getHaversineDistance(pos, z);
-        if (d < bestD) { bestD = d; best = z; }
-    }
-    if (!best) return null;
-    return { dist: bestD, bearing: bearing(pos, best) };
-}
-
-function navUpdateInfo() {
-    if (!navLastFix || !navStartTs) return;
-    const t = navLastFix;
-    const age = Math.round((Date.now() - t.time) / 1000);
-    let html = '📍 <b>' + t.lat.toFixed(5) + ', ' + t.lng.toFixed(5) + '</b><br>' +
-        'Точность: ' + Math.round(t.acc) + ' м · обновлено ' + age + ' с назад<br>';
-    if (t.ele != null) html += 'Высота: ' + Math.round(t.ele) + ' м<br>';
-    html += 'Пройдено: <b>' + (navTrackLengthM() / 1000).toFixed(2) + ' км</b> · ' +
-        navFmtDuration(Date.now() - navStartTs) + '<br>';
-    html += 'Точек в треке: ' + navTrack.length;
-    const tgt = navNearestTarget(t);
-    if (tgt) {
-        html += '<br>До ближайшей точки поиска: <b>' + Math.round(tgt.dist) + ' м</b>, ' +
-            'азимут ' + Math.round(tgt.bearing) + '°';
-    }
-    navSetStatus(html, true);
-}
-
-function navOnPosition(pos) {
-    const c = pos.coords;
-    const point = {
-        lat: c.latitude,
-        lng: c.longitude,
-        acc: c.accuracy,
-        ele: (c.altitude != null ? c.altitude : null),
-        time: pos.timestamp || Date.now()
-    };
-    navLastFix = point;
-
-    if (!navMarker) {
-        navMarker = L.circleMarker([point.lat, point.lng], {
-            radius: 7, color: '#ffffff', weight: 3, fillColor: '#e74c3c', fillOpacity: 1
-        }).addTo(navLayer);
-        navAccCircle = L.circle([point.lat, point.lng], {
-            radius: point.acc, color: '#e74c3c', weight: 1,
-            fillColor: '#e74c3c', fillOpacity: 0.12
-        }).addTo(navLayer);
-    } else {
-        navMarker.setLatLng([point.lat, point.lng]);
-        navAccCircle.setLatLng([point.lat, point.lng]).setRadius(point.acc);
-    }
-
-    // в трек пишем только достаточно точные точки и без «дрожания» (< 3 м)
-    if (point.acc <= NAV_MAX_ACCURACY) {
-        const prev = navTrack[navTrack.length - 1];
-        if (!prev || getHaversineDistance(prev, point) >= 3) {
-            navTrack.push(point);
-            if (!navPolyline) {
-                navPolyline = L.polyline([[point.lat, point.lng]], {
-                    color: '#e74c3c', weight: 4, opacity: 0.9
-                }).addTo(navLayer);
-            } else {
-                navPolyline.addLatLng([point.lat, point.lng]);
-            }
-        }
-    }
-    navUpdateInfo();
-}
-
-function navOnError(err) {
-    let msg = err.message || 'ошибка';
-    if (err.code === 1) msg = 'доступ к геолокации запрещён — разрешите его в браузере';
-    if (err.code === 2) msg = 'нет сигнала GPS — выйдите на открытое место';
-    if (err.code === 3) msg = 'превышено время ожидания сигнала';
-    navSetStatus('⚠ Навигатор: ' + msg, false);
-}
-
-function navRequestWakeLock() {
-    try {
-        if ('wakeLock' in navigator) {
-            navigator.wakeLock.request('screen').then(function (wl) {
-                navWakeLock = wl;
-            }).catch(function () { navWakeLock = null; });
-        }
-    } catch (e) { navWakeLock = null; }
-}
-
-function startNavigator() {
-    if (!navigator.geolocation) {
-        alert('Этот браузер не поддерживает геолокацию.');
-        return;
-    }
-    if (window.location.protocol === 'file:') {
-        alert('Геолокация не работает при открытии файла напрямую.\n' +
-              'Откройте приложение через локальный сервер (start.cmd) или по адресу https.');
-        return;
-    }
-    if (navWatchId !== null) return;
-
-    if (!navLayer) navLayer = L.layerGroup().addTo(map);
-    navTrack = [];
-    navStartTs = Date.now();
-    if (navPolyline) { navLayer.removeLayer(navPolyline); navPolyline = null; }
-    if (navMarker) { navLayer.removeLayer(navMarker); navMarker = null; }
-    if (navAccCircle) { navLayer.removeLayer(navAccCircle); navAccCircle = null; }
-
-    navSetStatus('Ищем сигнал GPS… Первый замер в лесу может занять 2–4 минуты.', true);
-    navWatchId = navigator.geolocation.watchPosition(navOnPosition, navOnError, {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 30000
-    });
-    navRequestWakeLock();
-    if (navTimer) clearInterval(navTimer);
-    navTimer = setInterval(navUpdateInfo, 1000);
-}
-
-function stopNavigator() {
-    if (navWatchId !== null) {
-        navigator.geolocation.clearWatch(navWatchId);
-        navWatchId = null;
-    }
-    if (navTimer) { clearInterval(navTimer); navTimer = null; }
-    if (navWakeLock) { try { navWakeLock.release(); } catch (e) { } navWakeLock = null; }
-    if (navStartTs) {
-        navSetStatus('Навигатор остановлен.<br>Пройдено: <b>' +
-            (navTrackLengthM() / 1000).toFixed(2) + ' км</b> · ' +
-            navFmtDuration(Date.now() - navStartTs) + '<br>Точек в треке: ' + navTrack.length +
-            '<br>Нажмите «Сохранить путь», чтобы скачать трек.', false);
-    }
-}
-
-function exportTrackGpx() {
-    if (!navTrack.length) {
-        alert('Трек пуст. Включите навигатор и пройдите немного.');
-        return;
-    }
-    const NL = String.fromCharCode(10);
-    const parts = [];
-    parts.push('<?xml version="1.0" encoding="UTF-8"?>');
-    parts.push('<gpx version="1.1" creator="MCHS-Search" xmlns="http://www.topografix.com/GPX/1/1">');
-    parts.push('<trk><name>Пройденный путь</name>');
-    parts.push('<trkseg>');
-    for (let i = 0; i < navTrack.length; i++) {
-        const p = navTrack[i];
-        const prev = navTrack[i - 1];
-        // при перерыве больше минуты (потеря сигнала) начинаем новый сегмент
-        if (prev && (p.time - prev.time) > 60000) {
-            parts.push('</trkseg>');
-            parts.push('<trkseg>');
-        }
-        parts.push('<trkpt lat="' + p.lat.toFixed(6) + '" lon="' + p.lng.toFixed(6) + '">');
-        if (p.ele != null) parts.push('<ele>' + p.ele.toFixed(1) + '</ele>');
-        parts.push('<time>' + new Date(p.time).toISOString() + '</time>');
-        parts.push('</trkpt>');
-    }
-    parts.push('</trkseg>');
-    parts.push('</trk>');
-    parts.push('</gpx>');
-
-    const blob = new Blob([parts.join(NL)], { type: 'application/gpx+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'trek_' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.gpx';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-}
-
-(function () {
-    const bs = navEl('nav-start-btn');
-    const bt = navEl('nav-stop-btn');
-    const bg = navEl('nav-gpx-btn');
-    if (bs) bs.addEventListener('click', startNavigator);
-    if (bt) bt.addEventListener('click', stopNavigator);
-    if (bg) bg.addEventListener('click', exportTrackGpx);
-})();
 
 // ---------- 21. РЕГИСТРАЦИЯ SERVICE WORKER (офлайн-режим) ----------
 // Работает только на http/https. При открытии файла напрямую (file://)
@@ -3354,14 +3344,14 @@ map.on('tileerror', function () {
 // выполняются в конце файла, в разделе 24 (там же разбор ссылки-плана).
 
 // ============================================================
-// 24. ГРУППЫ, ПЕРЕДАЧА ТРЕКА НА ТЕЛЕФОНЫ, РАБОТА ПОД УСТРОЙСТВО
+// 24. ПЕРЕДАЧА ПЛАНА, ТЕМА, ГЕОЛОКАЦИЯ, РАБОТА ПОД УСТРОЙСТВО
 // ------------------------------------------------------------
 // Что здесь:
 //   24.1 профиль устройства (телефон / планшет / компьютер) и лимиты;
-//   24.2 деление найденных точек на группы поиска + маршрут каждой группы;
-//   24.3 экспорт GPX со всеми группами и импорт GPX от координатора;
-//   24.4 ссылка-план и QR-код: как передать трек с компьютера на телефоны;
-//   24.5 кэш данных OSM, чтобы повторный расчёт не тянул их заново.
+//   24.4 QR-код плана и сканер: как передать план с компьютера на телефон;
+//   24.5 кэш данных OSM, чтобы повторный расчёт не тянул их заново;
+//   24.7 тёмная и светлая тема оформления;
+//   24.8 геолокация «где я» (без записи трека).
 // ============================================================
 
 // ---------- 24.1 ПРОФИЛЬ УСТРОЙСТВА ----------
@@ -3398,359 +3388,6 @@ function refreshDeviceStat() {
     if (el) el.textContent = DEVICE.cls;
 }
 
-// ---------- 24.2 ГРУППЫ ПОИСКА ----------
-// Координатор указывает число групп — программа делит точки так, чтобы у каждой
-// группы был свой компактный участок, а самые вероятные точки попали в разные
-// группы (первая группа получает самую вероятную точку, вторая — следующую и т.д.).
-const GROUP_COLORS = ['#c0392b', '#1f6fb2', '#1e8449', '#8e44ad', '#b9770e'];
-const GROUP_NAMES = ['А', 'Б', 'В', 'Г', 'Д'];
-
-let groupRoutes = [];        // [{name, color, pts:[{lat,lng,kind,prob}], order:[...], lengthM, probSum}]
-let groupLayer = null;       // слой с линиями маршрутов групп
-let importedLayer = null;    // слой с треками, загруженными из GPX
-let importedTracks = [];     // [{name, pts, color}]
-
-function clearGroupLayer() {
-    if (groupLayer) { map.removeLayer(groupLayer); groupLayer = null; }
-}
-
-// Ближайший сосед + улучшение 2-opt. Точек в группе немного (до ~40),
-// поэтому считаем мгновенно и без воркера.
-function optimizeSmallRoute(pts, startIdx) {
-    const n = pts.length;
-    if (n === 0) return { order: [], lengthM: 0 };
-    if (n === 1) return { order: [0], lengthM: 0 };
-    const d = [];
-    for (let i = 0; i < n; i++) {
-        d.push(new Float64Array(n));
-        for (let j = 0; j < n; j++) {
-            d[i][j] = i === j ? 0 : getHaversineDistance(pts[i], pts[j]);
-        }
-    }
-    const used = new Array(n).fill(false);
-    const order = [startIdx];
-    used[startIdx] = true;
-    for (let k = 1; k < n; k++) {
-        const last = order[order.length - 1];
-        let bi = -1, bd = Infinity;
-        for (let i = 0; i < n; i++) {
-            if (!used[i] && d[last][i] < bd) { bd = d[last][i]; bi = i; }
-        }
-        order.push(bi);
-        used[bi] = true;
-    }
-    // 2-opt: убираем пересечения
-    const len = function (o) {
-        let s = 0;
-        for (let i = 0; i < o.length - 1; i++) s += d[o[i]][o[i + 1]];
-        return s;
-    };
-    let improved = true, guard = 0;
-    while (improved && guard++ < 200) {
-        improved = false;
-        for (let i = 1; i < n - 1; i++) {
-            for (let j = i + 1; j < n; j++) {
-                const a = order[i - 1], b = order[i], c = order[j], e = order[j + 1 < n ? j + 1 : j];
-                const before = d[a][b] + (j + 1 < n ? d[c][e] : 0);
-                const after = d[a][c] + (j + 1 < n ? d[b][e] : 0);
-                if (after < before - 1e-9) {
-                    const part = order.slice(i, j + 1).reverse();
-                    for (let k = 0; k < part.length; k++) order[i + k] = part[k];
-                    improved = true;
-                }
-            }
-        }
-    }
-    return { order: order, lengthM: len(order) };
-}
-
-function splitIntoGroups(n) {
-    const pts = zones.slice();
-    for (const mp of manualPoints) {
-        pts.push({ lat: mp.lat, lng: mp.lng, score: 50, manual: true });
-    }
-    if (pts.length < 2) {
-        alert('Сначала найдите вероятные зоны (или поставьте ручные точки).');
-        return;
-    }
-    if (pts.length < n) {
-        alert('Точек всего ' + pts.length + ', на ' + n + ' групп их не хватит. Уменьшите число групп.');
-        return;
-    }
-
-    // 1. Разбиение: семя — самая вероятная из свободных точек, дальше набираем
-    //    ближайшие к группе, пока не наберём свою долю.
-    const free = new Set(pts.map(function (_, i) { return i; }));
-    const groups = [];
-    for (let g = 0; g < n; g++) {
-        let seed = null, best = -1;
-        free.forEach(function (i) {
-            const s = (pts[i].prob || 0) * 1000 + (pts[i].score || 0);
-            if (s > best) { best = s; seed = i; }
-        });
-        const members = [seed];
-        free.delete(seed);
-        const target = Math.ceil(free.size / (n - g));
-        while (members.length < target && free.size) {
-            let bi = null, bd = Infinity;
-            free.forEach(function (i) {
-                for (const m of members) {
-                    const dd = getHaversineDistance(pts[i], pts[m]);
-                    if (dd < bd) { bd = dd; bi = i; }
-                }
-            });
-            members.push(bi);
-            free.delete(bi);
-        }
-        groups.push(members);
-    }
-
-    // Если после деления остались точки (округление долей) — отдаём их
-    // ближайшей группе, чтобы ни одна точка поиска не потерялась.
-    if (free.size) {
-        const rest = Array.from(free);
-        rest.forEach(function (i) {
-            let bg = 0, bd = Infinity;
-            groups.forEach(function (members, g) {
-                for (const m of members) {
-                    const dd = getHaversineDistance(pts[i], pts[m]);
-                    if (dd < bd) { bd = dd; bg = g; }
-                }
-            });
-            groups[bg].push(i);
-        });
-        console.log('[APP] Точек, не попавших в доли, распределено по ближайшим группам:', rest.length);
-        free.clear();
-    }
-
-    // 2. Маршрут внутри каждой группы (начинаем с самой вероятной точки группы)
-    groupRoutes = groups.map(function (members, g) {
-        const gPts = members.map(function (i) { return pts[i]; });
-        let startIdx = 0, bs = -1;
-        gPts.forEach(function (p, i) {
-            const s = (p.prob || 0) * 1000 + (p.score || 0);
-            if (s > bs) { bs = s; startIdx = i; }
-        });
-        const res = optimizeSmallRoute(gPts, startIdx);
-        let probSum = 0;
-        for (const p of gPts) probSum += (p.prob || 0);
-        return {
-            name: 'Группа ' + GROUP_NAMES[g],
-            short: GROUP_NAMES[g],
-            color: GROUP_COLORS[g % GROUP_COLORS.length],
-            pts: gPts,
-            order: res.order,
-            lengthM: res.lengthM,
-            probSum: probSum
-        };
-    });
-
-    // 3. Помечаем каждую точку её группой (для списка и экспорта)
-    groupRoutes.forEach(function (gr, g) {
-        gr.pts.forEach(function (p) { p.group = g; });
-    });
-
-    drawGroupRoutes();
-    renderGroupSummary();
-    renderZones(zones);      // обновляем список: у точек появится буква группы
-    console.log('[APP] Деление на группы:', groupRoutes.map(function (g) {
-        return g.name + ': ' + g.pts.length + ' точек, ' + (g.lengthM / 1000).toFixed(2) + ' км';
-    }).join(' | '));
-}
-
-function drawGroupRoutes() {
-    clearGroupLayer();
-    groupLayer = L.layerGroup().addTo(map);
-    groupRoutes.forEach(function (gr) {
-        const latlngs = gr.order.map(function (i) {
-            return [gr.pts[i].lat, gr.pts[i].lng];
-        });
-        if (latlngs.length >= 2) {
-            L.polyline(latlngs, {
-                color: gr.color, weight: 4, opacity: 0.95, dashArray: '10, 5'
-            }).addTo(groupLayer);
-        }
-        // буква группы — у первой точки маршрута
-        const first = gr.order.length ? gr.pts[gr.order[0]] : gr.pts[0];
-        if (first) {
-            const icon = L.divIcon({
-                className: 'group-label',
-                html: '<div class="group-label-inner" style="background:' + gr.color + '">' + gr.short + '</div>',
-                iconSize: [34, 34], iconAnchor: [17, 17]
-            });
-            L.marker([first.lat, first.lng], { icon: icon, interactive: false }).addTo(groupLayer);
-        }
-    });
-    if (groupLayer.getLayers().length) {
-        try { map.fitBounds(groupLayer.getBounds().pad(0.1)); } catch (e) { }
-    }
-}
-
-function renderGroupSummary() {
-    const el = document.getElementById('groups-summary');
-    if (!el) return;
-    if (!groupRoutes.length) {
-        el.innerHTML = '<div class="hint">Группы не заданы: маршрут считается одним общим.</div>';
-        return;
-    }
-    let html = '';
-    groupRoutes.forEach(function (gr, i) {
-        html += '<div class="group-row">' +
-            '<span class="group-dot" style="background:' + gr.color + '">' + gr.short + '</span>' +
-            '<span class="group-info">' + gr.pts.length + ' точек · ' + (gr.lengthM / 1000).toFixed(2) + ' км · ' +
-            'P ≈ ' + fmtPct(gr.probSum) + '</span>' +
-            '<button class="group-gpx" data-group="' + i + '">GPX</button>' +
-            '</div>';
-    });
-    html += '<div class="hint">Каждой группе — свой файл: нажмите GPX рядом с группой. ' +
-        'Или скачайте все группы одним файлом кнопкой «Скачать трек».</div>';
-    el.innerHTML = html;
-    el.querySelectorAll('.group-gpx').forEach(function (b) {
-        b.addEventListener('click', function () {
-            exportGpx([parseInt(this.getAttribute('data-group'), 10)]);
-        });
-    });
-}
-
-// ---------- 24.3 GPX: ЭКСПОРТ И ИМПОРТ ----------
-function buildGpx(onlyGroups) {
-    const NL = String.fromCharCode(10);
-    const parts = [];
-    parts.push('<?xml version="1.0" encoding="UTF-8"?>');
-    parts.push('<gpx version="1.1" creator="MCHS-Search" xmlns="http://www.topografix.com/GPX/1/1">');
-    parts.push('<metadata><name>Поиск: маршруты групп</name></metadata>');
-
-    // точки-ориентиры — отдельными путевыми точками (видны в любом навигаторе)
-    const wptOf = function (p, label) {
-        const nm = (label ? label + ': ' : '') +
-            ((POINT_KIND_INFO[p.kind] || POINT_KIND_INFO.point).name) +
-            (typeof p.prob === 'number' ? ' (P≈' + fmtPct(p.prob) + ')' : '');
-        return '<wpt lat="' + p.lat.toFixed(6) + '" lon="' + p.lng.toFixed(6) + '">' +
-            '<name>' + nm.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</name>' +
-            '<sym>Flag, Blue</sym></wpt>';
-    };
-
-    if (groupRoutes.length) {
-        groupRoutes.forEach(function (gr, i) {
-            if (onlyGroups && onlyGroups.length && onlyGroups.indexOf(i) === -1) return;
-            const latlngs = gr.order.map(function (k) { return gr.pts[k]; });
-            parts.push('<trk><name>' + gr.name + '</name><trkseg>');
-            latlngs.forEach(function (p) {
-                parts.push('<trkpt lat="' + p.lat.toFixed(6) + '" lon="' + p.lng.toFixed(6) + '"/>');
-            });
-            parts.push('</trkseg></trk>');
-            latlngs.forEach(function (p, k) { parts.push(wptOf(p, gr.short + '-' + (k + 1))); });
-        });
-    } else if (lastRoute && lastRoute.length) {
-        parts.push('<trk><name>Поисковый маршрут</name><trkseg>');
-        lastRoute.forEach(function (idx) {
-            parts.push('<trkpt lat="' + routePoints[idx].lat.toFixed(6) + '" lon="' + routePoints[idx].lng.toFixed(6) + '"/>');
-        });
-        parts.push('</trkseg></trk>');
-        lastRoute.forEach(function (idx, k) { parts.push(wptOf(routePoints[idx], String(k + 1))); });
-    }
-    parts.push('</gpx>');
-    return parts.join(NL);
-}
-
-function downloadText(name, text, mime) {
-    const blob = new Blob([text], { type: mime || 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-}
-
-function stampName(prefix, ext) {
-    const d = new Date();
-    const p = function (v) { return (v < 10 ? '0' : '') + v; };
-    return prefix + '_' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
-        '_' + p(d.getHours()) + p(d.getMinutes()) + '.' + ext;
-}
-
-function parseGpxText(text) {
-    const doc = new DOMParser().parseFromString(text, 'text/xml');
-    const tracks = [];
-    const trks = doc.getElementsByTagName('trk');
-    for (let i = 0; i < trks.length; i++) {
-        const trk = trks[i];
-        const nameEl = trk.getElementsByTagName('name')[0];
-        const pts = [];
-        const tps = trk.getElementsByTagName('trkpt');
-        for (let k = 0; k < tps.length; k++) {
-            const lat = parseFloat(tps[k].getAttribute('lat'));
-            const lon = parseFloat(tps[k].getAttribute('lon'));
-            if (isFinite(lat) && isFinite(lon)) pts.push({ lat: lat, lng: lon });
-        }
-        if (pts.length) tracks.push({ name: (nameEl && nameEl.textContent) || ('Трек ' + (i + 1)), pts: pts });
-    }
-    // маршруты (rte) — тоже поддерживаем
-    const rtes = doc.getElementsByTagName('rte');
-    for (let i = 0; i < rtes.length; i++) {
-        const pts = [];
-        const rps = rtes[i].getElementsByTagName('rtept');
-        for (let k = 0; k < rps.length; k++) {
-            const lat = parseFloat(rps[k].getAttribute('lat'));
-            const lon = parseFloat(rps[k].getAttribute('lon'));
-            if (isFinite(lat) && isFinite(lon)) pts.push({ lat: lat, lng: lon });
-        }
-        if (pts.length) tracks.push({ name: 'Маршрут ' + (i + 1), pts: pts });
-    }
-    return tracks;
-}
-
-function showImportedTracks(tracks) {
-    if (importedLayer) { map.removeLayer(importedLayer); importedLayer = null; }
-    importedTracks = tracks;
-    importedLayer = L.layerGroup().addTo(map);
-    tracks.forEach(function (t, i) {
-        const color = GROUP_COLORS[i % GROUP_COLORS.length];
-        t.color = color;
-        if (t.pts.length >= 2) {
-            L.polyline(t.pts.map(function (p) { return [p.lat, p.lng]; }), {
-                color: color, weight: 5, opacity: 0.95
-            }).addTo(importedLayer);
-        }
-        const last = t.pts[t.pts.length - 1];
-        const icon = L.divIcon({
-            className: 'group-label',
-            html: '<div class="group-label-inner" style="background:' + color + '">' + (i + 1) + '</div>',
-            iconSize: [34, 34], iconAnchor: [17, 17]
-        });
-        L.marker([last.lat, last.lng], { icon: icon, interactive: false }).addTo(importedLayer);
-    });
-    const el = document.getElementById('import-status');
-    if (el) {
-        el.innerHTML = '📥 Загружено треков: <b>' + tracks.length + '</b> (' +
-            tracks.map(function (t) { return '«' + t.name + '» — ' + t.pts.length + ' точек'; }).join(', ') + ')';
-    }
-    if (importedLayer.getLayers().length) {
-        try { map.fitBounds(importedLayer.getBounds().pad(0.1)); } catch (e) { }
-    }
-    console.log('[APP] Импортировано треков из GPX:', tracks.length);
-}
-
-function importGpxFile(file) {
-    const reader = new FileReader();
-    reader.onload = function () {
-        try {
-            const tracks = parseGpxText(String(reader.result));
-            if (!tracks.length) {
-                alert('В файле не нашлось треков (trkpt/rtept). Проверьте, что это GPX.');
-                return;
-            }
-            showImportedTracks(tracks);
-        } catch (e) {
-            alert('Не удалось прочитать GPX: ' + e.message);
-        }
-    };
-    reader.readAsText(file);
-}
-
 // ---------- 24.4 ССЫЛКА-ПЛАН, QR-КОД И СКАНЕР ----------
 // План целиком (зона, точка потери, точки поиска) упаковывается в короткий код.
 // Показали QR — группа отсканировала его прямо в приложении или камерой
@@ -3769,7 +3406,7 @@ function buildPlan(maxPoints) {
         entry: entryPoint ? [+entryPoint.lat.toFixed(5), +entryPoint.lng.toFixed(5)] : null,
         pts: pts.map(function (z) {
             return [+z.lat.toFixed(5), +z.lng.toFixed(5), z.kind || 'point',
-                +(z.prob || 0).toFixed(2), (typeof z.group === 'number' ? z.group : -1)];
+                +(z.prob || 0).toFixed(2)];
         })
     };
 }
@@ -3784,32 +3421,6 @@ function codeToPlan(code) {
     let b64 = String(code).replace(/-/g, '+').replace(/_/g, '/');
     while (b64.length % 4) b64 += '=';
     return JSON.parse(decodeURIComponent(escape(atob(b64))));
-}
-
-function planLink() {
-    return location.origin + location.pathname + '#plan=' + planToCode(buildPlan());
-}
-
-function copyPlanLink() {
-    if (!(zones && zones.length)) {
-        alert('Сначала найдите вероятные зоны — тогда будет что передавать.');
-        return;
-    }
-    const link = planLink();
-    const done = function () {
-        const el = document.getElementById('share-status');
-        if (el) el.innerHTML = '🔗 Ссылка скопирована. Отправьте её группе в мессенджере: ' +
-            'на телефоне откроется это же приложение с готовым планом.<br><span class="share-link">' +
-            link.length + ' знаков</span>';
-        console.log('[APP] Ссылка-план:', link.length, 'знаков');
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(link).then(done, function () {
-            window.prompt('Скопируйте ссылку и отправьте группе:', link);
-        });
-    } else {
-        window.prompt('Скопируйте ссылку и отправьте группе:', link);
-    }
 }
 
 function showQrCode() {
@@ -3878,7 +3489,7 @@ function applyPlanCode(code) {
     if (plan.entry) setEntryPoint(plan.entry[0], plan.entry[1]);
     if (plan.pts && plan.pts.length) {
         zones = plan.pts.map(function (p) {
-            return { lat: p[0], lng: p[1], kind: p[2], prob: p[3], group: p[4], score: 50, cells: 1, cellList: null };
+            return { lat: p[0], lng: p[1], kind: p[2], prob: p[3], score: 50, cells: 1, cellList: null };
         });
         renderZones(zones);
     }
@@ -4009,8 +3620,6 @@ function terrainCacheKey(polygonPoints) {
 
 // ---------- 24.6 КНОПКИ ----------
 (function () {
-    // Деление на группы временно убрано из интерфейса: код остался в файле,
-    // но кнопок нет — вернём, когда логика будет отлажена до конца.
     const btnQr = document.getElementById('qr-btn');
     if (btnQr) btnQr.addEventListener('click', showQrCode);
 
@@ -4056,7 +3665,9 @@ function applyTheme(dark) {
 (function initTheme() {
     let saved = null;
     try { saved = localStorage.getItem(THEME_KEY); } catch (e) { }
-    const dark = saved ? saved === 'dark' : false;
+    // По умолчанию тёмная тема: она приятнее для глаз. Светлую можно включить
+    // кнопкой в шапке — выбор запоминается.
+    const dark = saved ? saved === 'dark' : true;
     applyTheme(dark);
     const btn = document.getElementById('theme-btn');
     if (btn) {
