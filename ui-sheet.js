@@ -109,6 +109,7 @@
 
     function openSheet() {
         applyHeight(true);
+        if (typeof hidePill === 'function') hidePill();
     }
 
     function closeSheet() {
@@ -239,6 +240,95 @@
         setTimeout(function () { el.hidden = true; }, 4000);
     }
 
+    // ---------- плашка: что сейчас происходит ----------
+    var actionPill = null;
+    var pillTimer = null;
+
+    function pillEl() {
+        if (!actionPill) {
+            actionPill = document.createElement('button');
+            actionPill.id = 'action-pill';
+            actionPill.type = 'button';
+            actionPill.className = 'action-pill hidden';
+            (document.getElementById('app-body') || document.body).appendChild(actionPill);
+            actionPill.addEventListener('click', function () {
+                var target = actionPill.getAttribute('data-target');
+                hidePill();
+                if (target === 'zones') {
+                    openSheet();
+                    setTimeout(function () {
+                        var z = document.getElementById('zones-scroll');
+                        if (z) z.scrollIntoView({ block: 'start' });
+                    }, 320);
+                } else if (target === 'route') {
+                    openCard('5');
+                } else {
+                    openSheet();
+                }
+            });
+        }
+        return actionPill;
+    }
+
+    function showPill(text, kind, target, keep) {
+        var el = pillEl();
+        el.textContent = text;
+        if (target) el.setAttribute('data-target', target);
+        el.classList.remove('hidden', 'busy', 'done', 'warn');
+        if (kind) el.classList.add(kind);
+        if (pillTimer) { clearTimeout(pillTimer); pillTimer = null; }
+        if (!keep) {
+            pillTimer = setTimeout(hidePill, kind === 'done' ? 20000 : 8000);
+        }
+    }
+
+    function hidePill() {
+        if (actionPill) actionPill.classList.add('hidden');
+        if (pillTimer) { clearTimeout(pillTimer); pillTimer = null; }
+    }
+
+    // следим за поиском вероятных зон: кнопка в панели блокируется, пока идёт работа
+    function watchZonesSearch() {
+        var btn = document.getElementById('find-zones-btn');
+        if (!btn) return;
+        showPill('Ищу вероятные зоны… загружаю данные OSM', 'busy', '', true);
+        var t = setInterval(function () {
+            if (btn.disabled) {
+                showPill(btn.textContent || 'Ищу вероятные зоны…', 'busy', '', true);
+                return;
+            }
+            clearInterval(t);
+            var n = (typeof zones !== 'undefined' && zones) ? zones.length : 0;
+            if (n) {
+                showPill('Найдено точек: ' + n + ' · нажмите, чтобы открыть список', 'done', 'zones');
+            } else {
+                showPill('Зоны не найдены — проверьте зону поиска', 'warn', 'zones');
+            }
+        }, 500);
+    }
+
+    // следим за построением маршрута
+    function watchRoute() {
+        var wrap = document.getElementById('progress-wrap');
+        var text = document.getElementById('progress-text');
+        showPill('Строю маршрут…', 'busy', '', true);
+        var t = setInterval(function () {
+            var busy = wrap && !wrap.classList.contains('hidden');
+            if (busy) {
+                showPill(text ? (text.textContent || 'Строю маршрут…') : 'Строю маршрут…', 'busy', '', true);
+                return;
+            }
+            clearInterval(t);
+            var dist = document.getElementById('stat-distance');
+            var km = dist ? dist.textContent : '';
+            if (km && km !== '0.00') {
+                showPill('Маршрут готов: ' + km + ' км · нажмите, чтобы открыть панель', 'done', 'route');
+            } else {
+                showPill('Маршрут построен', 'done', 'route');
+            }
+        }, 600);
+    }
+
     function peekAction(card) {
         if (card === '1') {
             // очертить зону поиска (или закончить рисование, если уже рисуем)
@@ -249,7 +339,7 @@
         if (card === '4') {
             if (hasPolygon()) {
                 closeSheet();
-                clickById('find-zones-btn');
+                if (clickById('find-zones-btn')) watchZonesSearch();
             } else {
                 flashCard('1', 'Сначала очертите зону поиска — откройте карточку 1.');
             }
@@ -258,7 +348,7 @@
         if (card === '5') {
             if (hasZones()) {
                 closeSheet();
-                clickById('optimize-btn');
+                if (clickById('optimize-btn')) watchRoute();
             } else {
                 flashCard('4', 'Сначала найдите вероятные зоны в карточке 4.');
             }

@@ -229,17 +229,6 @@ body {
     color: var(--text);
 }
 
-/* На компьютере сканер QR не нужен — телефон и так рядом, а камеры может не быть */
-@media (min-width: 901px) {
-    #scan-qr-btn {
-        display: none;
-    }
-
-    .row-2 {
-        grid-template-columns: 1fr;
-    }
-}
-
 body.sheet-open .map-fabs {
     opacity: 0;
     pointer-events: none;
@@ -262,6 +251,42 @@ body.sheet-open .map-fabs {
 }
 
 body.sheet-open .map-hint {
+    display: none;
+}
+
+/* Плашка «что сейчас происходит» для действий, запущенных кнопками с карты */
+.action-pill {
+    position: fixed;
+    z-index: 70;
+    left: 12px;
+    right: 12px;
+    bottom: calc(var(--peek-h) + 16px + env(safe-area-inset-bottom));
+    padding: 12px 14px;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    text-align: center;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+}
+
+.action-pill.busy {
+    border-left: 4px solid var(--accent);
+}
+
+.action-pill.done {
+    border-left: 4px solid var(--ok);
+}
+
+.action-pill.warn {
+    border-left: 4px solid var(--warn);
+}
+
+body.sheet-open .action-pill {
     display: none;
 }
 
@@ -677,33 +702,35 @@ body.theme-dark #network-status.checking {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 10px 12px;
+    padding: 8px 10px;
 }
 
 .zones-title {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text);
-    padding-bottom: 8px;
+    padding-bottom: 6px;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .zones-empty {
     color: var(--text-dim);
-    font-size: 12.5px;
-    line-height: 1.5;
-    padding: 6px 2px;
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 4px 2px;
     text-align: center;
 }
 
 .zones-list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    font-size: 13px;
-    max-height: 46vh;
+    gap: 3px;
+    font-size: 12.5px;
+    /* видно ровно три точки, дальше список прокручивается колесом мыши */
+    max-height: 116px;
     overflow-y: auto;
+    overscroll-behavior: contain;
     scrollbar-width: thin;
 }
 
@@ -719,8 +746,8 @@ body.theme-dark #network-status.checking {
 .zone-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
+    gap: 6px;
+    padding: 6px 8px;
     background: var(--surface-2);
     border-radius: 6px;
     border-left: 3px solid var(--accent);
@@ -745,7 +772,7 @@ body.theme-dark #network-status.checking {
 
 .zone-item .zone-coord {
     color: var(--text-dim);
-    font-size: 11.5px;
+    font-size: 11px;
     margin-left: auto;
     font-variant-numeric: tabular-nums;
 }
@@ -816,12 +843,12 @@ body.theme-dark #network-status.checking {
 #status-bar {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 8px 12px;
+    gap: 3px 12px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 12px 14px;
-    font-size: 13px;
+    padding: 8px 10px;
+    font-size: 12px;
     color: var(--text-dim);
 }
 
@@ -1094,7 +1121,16 @@ body.theme-dark #network-status.checking {
     }
 
     .zones-list {
-        max-height: 30vh;
+        max-height: 116px;      /* на ПК тоже три точки, дальше прокрутка */
+    }
+
+    /* сканер QR нужен только на телефоне */
+    #scan-qr-btn {
+        display: none;
+    }
+
+    .row-2 {
+        grid-template-columns: 1fr;
     }
 
     .qr-card {
