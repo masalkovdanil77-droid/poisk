@@ -14,7 +14,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Поиск людей" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
-    <link rel="stylesheet" href="design.css?v=64" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <link rel="stylesheet" href="design.css?v=65" />
 
     <!-- БИБЛИОТЕКИ.
          Сначала берём их из папки vendor (тогда приложение работает и без интернета).
@@ -23,54 +24,62 @@
          показывает понятное сообщение, а не «зависает». -->
     <script>
     (function () {
+        // для каждой библиотеки: путь в папке vendor, тот же файл в корне сайта
+        // и резервный адрес. Берём первый доступный вариант.
         var LIBS = [
-            { local: 'vendor/leaflet/leaflet.js', cdn: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' },
-            { local: 'vendor/turf.min.js', cdn: 'https://unpkg.com/@turf/turf@6/turf.min.js' },
-            { local: 'vendor/jsqr.min.js', cdn: 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js' },
-            { local: 'vendor/qrcode.min.js', cdn: 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js' }
+            { local: 'vendor/leaflet/leaflet.js', root: 'leaflet.js',
+              cdn: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' },
+            { local: 'vendor/turf.min.js', root: 'turf.min.js',
+              cdn: 'https://unpkg.com/@turf/turf@6/turf.min.js' },
+            { local: 'vendor/jsqr.min.js', root: 'jsqr.min.js',
+              cdn: 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js' },
+            { local: 'vendor/qrcode.min.js', root: 'qrcode.min.js',
+              cdn: 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js' }
         ];
-        var APP = ['logic.js?v=123', 'ui-sheet.js?v=10'];
+        var APP = ['logic.js?v=124', 'ui-sheet.js?v=11'];
         window.__libSources = {};
 
-        function addCss(href, cdn) {
-            var l = document.createElement('link');
-            l.rel = 'stylesheet';
-            l.href = href;
-            l.onerror = function () {
-                if (!cdn) return;
-                var c = document.createElement('link');
-                c.rel = 'stylesheet';
-                c.href = cdn;
-                document.head.appendChild(c);
-            };
-            document.head.appendChild(l);
+        function addCss() {
+            var urls = [
+                'vendor/leaflet/leaflet.css',
+                'leaflet.css',
+                'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+            ];
+            (function next(i) {
+                if (i >= urls.length) return;
+                var l = document.createElement('link');
+                l.rel = 'stylesheet';
+                l.href = urls[i];
+                l.onerror = function () { next(i + 1); };
+                document.head.appendChild(l);
+            })(0);
+        }
+
+        // пробуем по очереди: папка vendor → корень сайта → резервный адрес
+        function tryLoad(candidates, i, onDone) {
+            if (i >= candidates.length) { onDone(null); return; }
+            var el = document.createElement('script');
+            el.src = candidates[i].src;
+            el.onload = function () { onDone(candidates[i]); };
+            el.onerror = function () { tryLoad(candidates, i + 1, onDone); };
+            document.head.appendChild(el);
         }
 
         function loadOne(i, done) {
             if (i >= LIBS.length) { done(); return; }
-            var s = document.createElement('script');
-            s.src = LIBS[i].local;
-            s.onload = function () {
-                window.__libSources[LIBS[i].local] = 'vendor';
+            var lib = LIBS[i];
+            var list = [
+                { src: lib.local, where: 'папка vendor' },
+                { src: lib.root, where: 'корень сайта' },
+                { src: lib.cdn, where: 'резервный адрес' }
+            ];
+            tryLoad(list, 0, function (got) {
+                window.__libSources[lib.local] = got ? got.where : 'нет';
+                if (got && got.where !== 'папка vendor') {
+                    console.log('[APP] ' + lib.local + ' не найден — взят из: ' + got.where);
+                }
                 loadOne(i + 1, done);
-            };
-            s.onerror = function () {
-                // локального файла нет — пробуем запасной адрес
-                var c = document.createElement('script');
-                c.src = LIBS[i].cdn;
-                c.onload = function () {
-                    window.__libSources[LIBS[i].local] = 'резервный адрес';
-                    console.log('[APP] ' + LIBS[i].local + ' не найден — загружен с резервного адреса');
-                    loadOne(i + 1, done);
-                };
-                c.onerror = function () {
-                    window.__libSources[LIBS[i].local] = 'нет';
-                    console.log('[APP] не удалось загрузить ' + LIBS[i].local);
-                    loadOne(i + 1, done);
-                };
-                document.head.appendChild(c);
-            };
-            document.head.appendChild(s);
+            });
         }
 
         function startApp() {
@@ -81,7 +90,7 @@
             });
         }
 
-        addCss('vendor/leaflet/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+        addCss();
 
         function begin() {
             loadOne(0, function () {
