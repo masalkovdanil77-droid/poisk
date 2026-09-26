@@ -239,37 +239,13 @@
         });
     }
 
-    // ---------- три главные кнопки ----------
-    // Тап — выполнить главное действие (очертить зону / найти зоны / маршрут),
-    // долгое нажатие — открыть настройки этого раздела.
-    function clickById(id) {
-        const el = document.getElementById(id);
-        if (el && !el.disabled) { el.click(); return true; }
-        return false;
-    }
-
+    // ---------- вспомогательное ----------
     function hasPolygon() {
         return (typeof polygonPoints !== 'undefined') && polygonPoints && polygonPoints.length >= 3;
     }
 
     function hasZones() {
         return (typeof zones !== 'undefined') && zones && zones.length > 0;
-    }
-
-    function flashCard(cardNum, message) {
-        openCard(cardNum);
-        if (!message) return;
-        let el = document.getElementById('peek-note');
-        if (!el) {
-            el = document.createElement('div');
-            el.id = 'peek-note';
-            el.className = 'peek-note';
-            const host = document.getElementById('app-body') || document.body;
-            host.appendChild(el);
-        }
-        el.textContent = message;
-        el.hidden = false;
-        setTimeout(function () { el.hidden = true; }, 4000);
     }
 
     // ---------- плашка: что сейчас происходит ----------
@@ -361,60 +337,88 @@
         }, 600);
     }
 
+    // Плашку показывает та кнопка, которую реально нажали в панели.
+    function hookPanelButton(id, watcher) {
+        var b = document.getElementById(id);
+        if (!b) return;
+        b.addEventListener('click', function () {
+            if (b.disabled) return;   // действие не началось — плашку не показываем
+            watcher();
+        });
+    }
+    hookPanelButton('find-zones-btn', watchZonesSearch);
+    hookPanelButton('optimize-btn', watchRoute);
+
+    // ---------- нижняя строка иконок ----------
+    // Как в «Яндекс.Картах»/2ГИС: тап по иконке НИЧЕГО не запускает сам,
+    // он переносит пользователя на соответствующую карточку панели, где
+    // видно настройки и большая кнопка действия. Так исключены случайные
+    // запуски поиска зон и построения маршрута без выбора параметров.
     function peekAction(card) {
-        if (card === '1') {
-            // очертить зону поиска (или закончить рисование, если уже рисуем)
-            closeSheet();
-            clickById('draw-polygon-btn');
+        if (card === '4' && !hasPolygon()) {
+            openCard('4');
+            showNote('Сначала очертите зону поиска — карточка 1.');
             return;
         }
-        if (card === '4') {
-            if (hasPolygon()) {
-                closeSheet();
-                if (clickById('find-zones-btn')) watchZonesSearch();
-            } else {
-                flashCard('1', 'Сначала очертите зону поиска — откройте карточку 1.');
-            }
-            return;
-        }
-        if (card === '5') {
-            if (hasZones()) {
-                closeSheet();
-                if (clickById('optimize-btn')) watchRoute();
-            } else {
-                flashCard('4', 'Сначала найдите вероятные зоны в карточке 4.');
-            }
+        if (card === '5' && !hasZones()) {
+            openCard('5');
+            showNote('Сначала найдите вероятные зоны — карточка 4.');
             return;
         }
         openCard(card);
     }
 
+    // маленькая подсказка внизу экрана (не переключает карточки)
+    var noteTimer = null;
+    function showNote(message) {
+        let el = document.getElementById('peek-note');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'peek-note';
+            el.className = 'peek-note';
+            const host = document.getElementById('app-body') || document.body;
+            host.appendChild(el);
+        }
+        el.textContent = message;
+        el.hidden = false;
+        if (noteTimer) clearTimeout(noteTimer);
+        noteTimer = setTimeout(function () { el.hidden = true; }, 4000);
+    }
+
     Array.prototype.forEach.call(document.querySelectorAll('.peek-btn'), function (btn) {
         const card = btn.getAttribute('data-card');
-
-        // долгое нажатие (0,6 с) — открыть настройки раздела
-        let pressTimer = null;
-        let longPressed = false;
-
-        btn.addEventListener('pointerdown', function () {
-            longPressed = false;
-            pressTimer = setTimeout(function () {
-                longPressed = true;
-                if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) { } }
-                openCard(card);
-            }, 600);
-        });
-        ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
-            btn.addEventListener(ev, function () {
-                if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-            });
-        });
-
-        btn.addEventListener('click', function () {
-            if (longPressed) { longPressed = false; return; }   // уже открыли настройки
-            peekAction(card);
-        });
+        btn.addEventListener('click', function () { peekAction(card); });
     });
+
+    // ---------- значки состояния на иконках ----------
+    // Число найденных точек на «Вероятных зонах» и галочка на «Маршруте»:
+    // видно, что уже посчитано, не открывая панель.
+    function refreshPeekBadges() {
+        var zBtn = document.getElementById('peek-probable');
+        if (zBtn) {
+            var n = (typeof zones !== 'undefined' && zones) ? zones.length : 0;
+            setBadge(zBtn, n ? (n > 99 ? '99+' : String(n)) : '');
+        }
+        var rBtn = document.getElementById('peek-route');
+        if (rBtn) {
+            var drawn = (typeof polylinePath !== 'undefined') && polylinePath;
+            setBadge(rBtn, drawn ? '✓' : '');
+        }
+    }
+
+    function setBadge(btn, text) {
+        var b = btn.querySelector('.peek-badge');
+        if (!text) { if (b) b.remove(); return; }
+        if (!b) {
+            b = document.createElement('span');
+            b.className = 'peek-badge';
+            btn.appendChild(b);
+        }
+        b.textContent = text;
+    }
+
+    refreshPeekBadges();
+    setInterval(refreshPeekBadges, 1200);
 
     // ---------- режимы работы по клику на карте ----------
     // Когда включён режим «кликайте по карте», панель убирается,

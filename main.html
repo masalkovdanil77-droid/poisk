@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-title" content="Поиск людей" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" href="icon-192.png" />
-    <link rel="stylesheet" href="design.css?v=72" />
+    <link rel="stylesheet" href="design.css?v=73" />
 
     <!-- БИБЛИОТЕКИ.
          Сначала берём их из папки vendor (тогда приложение работает и без интернета).
@@ -36,7 +36,7 @@
             { local: 'vendor/qrcode.min.js', root: 'qrcode.min.js',
               cdn: 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js' }
         ];
-        var APP = ['logic.js?v=131', 'ui-sheet.js?v=15'];
+        var APP = ['logic.js?v=132', 'ui-sheet.js?v=16'];
         window.__libSources = {};
 
         function addCss() {
@@ -207,14 +207,12 @@
                         <label>Кто потерялся</label>
                         <select id="subject-profile">
                             <option value="generic" selected>Неизвестно / общий</option>
-                            <option value="child-3">Ребёнок 1–3 лет</option>
-                            <option value="child-6">Ребёнок 4–6 лет</option>
-                            <option value="child-12">Ребёнок 7–12 лет</option>
-                            <option value="youth">Подросток 13–15 лет</option>
-                            <option value="mushroomer">Грибник / ягодник</option>
+                            <option value="child">Ребёнок (до 12 лет)</option>
+                            <option value="teen">Подросток (13–17 лет)</option>
+                            <option value="gatherer">Взрослый: грибник, рыбак, отдыхающий</option>
+                            <option value="hiker">Турист, лыжник, спортсмен</option>
                             <option value="hunter">Охотник</option>
-                            <option value="hiker">Турист (поход)</option>
-                            <option value="elderly">Пожилой человек</option>
+                            <option value="elderly">Пожилой (без потери памяти)</option>
                             <option value="dementia">Пожилой с деменцией</option>
                             <option value="despondent">Психологически нестабильный</option>
                         </select>
@@ -266,7 +264,7 @@
                         <button id="qr-btn" class="btn btn-primary">▦ Показать QR-код</button>
                         <button id="scan-qr-btn" class="btn btn-secondary">📷 Сканировать QR</button>
                     </div>
-                    <div id="share-status" class="nav-status">QR-код передаёт зону, точки и маршрут на телефон группы. Второй кнопкой можно отсканировать код с другого телефона.</div>
+                    <div id="share-status" class="nav-status">QR-код передаёт зону, точки и маршрут на телефон группы. Камеру наводить нужно внутри приложения (кнопка «Сканировать QR») — браузер не отдаёт странице картинку с системной камеры.</div>
 
                     <div class="row-2">
                         <button id="save-plan-btn" class="btn btn-secondary">💾 Сохранить в файл</button>

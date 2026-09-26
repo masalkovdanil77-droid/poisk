@@ -422,6 +422,7 @@ body.sheet-open .action-pill {
 }
 
 .peek-btn {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -436,6 +437,24 @@ body.sheet-open .action-pill {
     font-weight: 500;
     line-height: 1.15;
     cursor: pointer;
+}
+
+/* значок состояния: сколько точек найдено / маршрут построен */
+.peek-badge {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    pointer-events: none;
 }
 
 .peek-btn:hover {

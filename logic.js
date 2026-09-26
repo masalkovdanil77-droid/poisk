@@ -1449,76 +1449,114 @@ function parseOSMXML(xmlText, terrain) {
 
 
 // ============================================================
-// 7.5. ПРОФИЛИ ПОТЕРЯВШИХСЯ И ВЕРОЯТНОСТНАЯ МОДЕЛЬ (v40)
+// 7.5. ПРОФИЛИ ПОТЕРЯВШИХСЯ И ВЕРОЯТНОСТНАЯ МОДЕЛЬ (v41)
 // ------------------------------------------------------------
-// На основе исследования RESEARCH.md (ISRID/Кёстер, «ЛизаАлерт»/МЧС).
-// Модель:  P(ячейка) ∝ ρ(радиус от точки потери | профиль, время) × S(ландшафт)
+// На основе исследования RESEARCH.md (ISRID/Кёстер, «ЛизаАлерт»/МЧС) и
+// research/05_gruppy_i_vremya.md (укрупнение групп + закон «расстояние ↔ время»).
+// Модель:  P(ячейка) ∝ ρ(радиус от точки потери | группа, время) × S(ландшафт)
 //   ρ — плотность вероятности (1/км²): перцентили «какой % находят в
 //       радиусе r» превращаются в кольцевую плотность (доля кольца /
 //       площадь кольца). Распределение «кольцевое», см. RESEARCH.md §5.2.
+//       Время влияет дважды: область «разворачивается» (profileScale) и
+//       появляется физический предел удаления (profileHardRangeKm).
 //   S — множитель привлекательности ландшафта (линейные объекты, вода,
 //       строения, опушки — где статистически чаще находят, §4 RESEARCH.md).
 // ВАЖНО: точные таблицы ISRID-2008 по «активным» категориям (турист,
 // охотник и т.п.) в открытом доступе отсутствуют — кривые построены по
 // публичным данным Кёстера (база Вирджинии) и эвристике «ЛизаАлерт»
 // для грибников и помечены в подсказках как оценки (~).
+// Проверка модели на числах: node _tools/test_profiles.js
 // ============================================================
 
+// Группы намеренно КРУПНЫЕ (v41): в реальном поиске редко известен точный
+// возраст или занятие, а узкие профили создают ложную точность.
+//   cum — «какая доля находок приходится на радиус r» (км), итоговая кривая
+//         для полностью развернувшегося поиска;
+//   vMax — реалистичная скорость перемещения потерявшегося, км/ч (с остановками,
+//         блужданием, ночёвками). Даёт физический предел удаления от точки
+//         потери: дальше vMax × часы человек просто не мог оказаться;
+//   tau — за сколько часов «разворачивается» область поиска (час).
+// Данные: Р. Кёстер / ISRID (см. RESEARCH.md, research/03_distancii_isrid.md).
 const SUBJECT_PROFILES = {
-    'child-3': {
-        label: 'Ребёнок 1–3 лет',
-        cum: [[0.05, 0.08], [0.2, 0.25], [0.3, 0.5], [0.6, 0.75], [1.5, 0.85], [4.5, 0.95], [10, 1]],
-        note: 'Маленькие дети почти всегда рядом с местом пропажи; часто прячутся и молчат — осматривать укрытия.'
+    'child': {
+        label: 'Ребёнок (до 12 лет)',
+        cum: [[0.05, 0.08], [0.3, 0.30], [0.8, 0.48], [1.6, 0.62], [3.2, 0.78], [6, 0.90], [12, 0.97], [20, 1]],
+        vMax: 1.5,
+        tau: 3,
+        note: 'Половина детей 4–6 лет находится ближе 0,8 км, малыши 1–3 лет — почти всегда в 0,3 км. ' +
+              'Дети прячутся, молчат и не откликаются: осматривать укрытия, ямы, кусты, постройки, машины ' +
+              'и дворы (больше половины школьников находят именно там).'
     },
-    'child-6': {
-        label: 'Ребёнок 4–6 лет',
-        cum: [[0.05, 0.08], [0.3, 0.25], [0.8, 0.5], [1.6, 0.7], [3.2, 0.85], [6, 0.95], [12, 1]],
-        note: 'Обычно в пределах 1 км; прячутся и не откликаются — искать в укрытиях, чаще.'
+    'teen': {
+        label: 'Подросток (13–17 лет)',
+        cum: [[0.05, 0.05], [0.5, 0.18], [1.6, 0.42], [3.2, 0.65], [8, 0.88], [16, 0.97], [30, 1]],
+        vMax: 2.5,
+        tau: 8,
+        note: 'Точных статистик мало (категория ISRID Youth 13–15). Ведёт себя как молодой турист, ' +
+              'может уходить далеко и намеренно скрываться — проверять компании, заброшки, тропы, ' +
+              'остановки и дороги.'
     },
-    'child-12': {
-        label: 'Ребёнок 7–12 лет',
-        cum: [[0.05, 0.06], [0.5, 0.2], [1.6, 0.5], [3.2, 0.7], [6.4, 0.88], [12, 0.97], [20, 1]],
-        note: 'Чаще всего в 1–2 км; может быть в постройках, дворах, машинах.'
+    'gatherer': {
+        label: 'Взрослый: грибник, ягодник, рыбак, отдыхающий',
+        cum: [[0.05, 0.08], [0.5, 0.25], [1, 0.45], [2, 0.65], [3, 0.80], [5, 0.90], [10, 0.96], [20, 0.99], [30, 1]],
+        vMax: 1.8,
+        tau: 6,
+        note: 'Самая частая группа. ~80 % находят в 3 км от входа в лес: человек ходит «по кругу» ' +
+              'своими тропами и почти не отходит от машины. Искать сеть троп и просек, ' +
+              'перекрёстки, стоянку и дорогу к ней.'
     },
-    'youth': {
-        label: 'Подросток 13–15 лет',
-        cum: [[0.05, 0.05], [0.5, 0.15], [1.6, 0.4], [3.2, 0.65], [8, 0.9], [16, 0.98], [30, 1]],
-        note: 'Точных данных мало: ведёт себя как молодой турист — уходит дальше.'
-    },
-    'mushroomer': {
-        label: 'Грибник / ягодник',
-        cum: [[0.05, 0.08], [0.5, 0.25], [1, 0.45], [2, 0.65], [3, 0.8], [5, 0.9], [10, 0.96], [20, 0.99], [30, 1]],
-        note: 'Грибники далеко не уходят: ~80% находят в 3 км от входа в лес.'
+    'hiker': {
+        label: 'Турист, лыжник, спортсмен (поход, пробежка)',
+        cum: [[0.05, 0.04], [1, 0.15], [3, 0.40], [6, 0.65], [12, 0.85], [25, 0.96], [40, 1]],
+        vMax: 3.5,
+        tau: 14,
+        note: 'Уходят дальше всех: беговые лыжники проходят вдвое больше охотников и детей. ' +
+              'Разброс огромный — искать широко, в первую очередь вдоль линейных объектов ' +
+              '(тропы, дороги, ЛЭП, берега) и на удалении по направлению движения.'
     },
     'hunter': {
         label: 'Охотник',
-        cum: [[0.05, 0.06], [0.5, 0.2], [1.6, 0.5], [3.2, 0.75], [6, 0.9], [12, 0.97], [25, 1]],
-        note: 'Обычно в 1–2 км от последней точки; часто уходит вниз по склону от тропы.'
-    },
-    'hiker': {
-        label: 'Турист (поход)',
-        cum: [[0.05, 0.04], [1, 0.15], [3, 0.4], [6, 0.65], [12, 0.85], [25, 0.96], [40, 1]],
-        note: 'Туристы уходят дальше остальных — разброс большой, искать широко.'
+        cum: [[0.05, 0.06], [0.5, 0.22], [1.6, 0.50], [3.2, 0.75], [6, 0.90], [12, 0.97], [25, 1]],
+        vMax: 2.2,
+        tau: 8,
+        note: 'Обычно в пределах ~1,6 км от последней точки; сходит с тропы примерно на 30 м ' +
+              'вниз по склону и теряется, увлёкшись зверем. Смотреть ложбины и склоны ниже тропы.'
     },
     'elderly': {
-        label: 'Пожилой человек',
-        cum: [[0.05, 0.08], [0.2, 0.25], [0.8, 0.5], [2, 0.62], [4, 0.75], [7.7, 0.95], [15, 1]],
-        note: 'Ведёт себя по своему занятию: может уйти на 4–8 км.'
+        label: 'Пожилой человек (без потери памяти)',
+        cum: [[0.05, 0.06], [0.2, 0.22], [0.8, 0.45], [2.4, 0.65], [4, 0.78], [7.7, 0.95], [15, 1]],
+        vMax: 1.4,
+        tau: 10,
+        note: 'До 2,4 км находят ~65 %, но дальше «хвост» длиннее, чем при деменции: ' +
+              'человек ведёт себя по своему занятию (пошёл за грибами, на рыбалку, к знакомым местам). ' +
+              'Искать и рядом, и по направлению его обычного маршрута.'
     },
     'dementia': {
-        label: 'Пожилой с деменцией',
-        cum: [[0.05, 0.1], [0.3, 0.25], [0.8, 0.5], [1.1, 0.75], [2.4, 0.94], [5, 1]],
-        note: '94% находят в 2,4 км; идёт по прямой, «пока не застрянет» — канавы, чаща, тропы.'
+        label: 'Пожилой с потерей памяти (деменция)',
+        cum: [[0.05, 0.10], [0.3, 0.25], [0.8, 0.50], [1.6, 0.89], [2.4, 0.94], [5, 1]],
+        vMax: 0.9,
+        tau: 4,
+        note: '89 % находят в 1,6 км, половину — в 0,8 км. Идёт по прямой «пока не застрянет»: ' +
+              '63 % находок — в канавах, ручьях, дренаже, густом кустарнике и ежевике, ' +
+              'медиана удаления от тропы ~30 м. Проверять всё, что рядом и «непроходимо».'
     },
     'despondent': {
-        label: 'Психологически нестабильный',
-        cum: [[0.05, 0.1], [0.3, 0.5], [1, 0.6], [2.6, 0.75], [8, 0.96], [20, 0.99], [32, 1]],
-        note: 'Часть рядом с точкой, часть уходит к воде/обрывам; высокий риск.'
+        label: 'Психологически нестабильный / в тяжёлом состоянии',
+        cum: [[0.05, 0.12], [0.3, 0.50], [0.8, 0.60], [2.4, 0.72], [8, 0.92], [20, 0.98], [32, 1]],
+        vMax: 2.5,
+        tau: 20,
+        note: 'Распределение двойное: ~50 % просто «ушли из виду» в 0,3 км, но часть ' +
+              'целенаправленно идёт к значимым местам — вода, обрывы, знакомые места, — ' +
+              'и способна уйти на десятки километров. Смотреть воду и высоты, искать быстро: ' +
+              'смертность до 55 %.'
     },
     'generic': {
-        label: 'Общий профиль',
-        cum: [[0.05, 0.08], [0.3, 0.2], [1, 0.4], [2, 0.55], [4, 0.7], [8, 0.9], [16, 0.97], [30, 1]],
-        note: 'Средний случай: основной вес — в 1–4 км от точки потери.'
+        label: 'Неизвестно / общий профиль',
+        cum: [[0.05, 0.08], [0.3, 0.20], [1, 0.40], [2, 0.55], [4, 0.70], [8, 0.90], [16, 0.97], [30, 1]],
+        vMax: 2.0,
+        tau: 10,
+        note: 'Средний случай, когда о человеке ничего не известно: основной вес — в 1–4 км ' +
+              'от точки потери. Выбирайте конкретную группу, если есть хоть какие-то данные.'
     }
 };
 
@@ -1534,30 +1572,81 @@ function getHoursElapsed() {
     return Math.min(v, 720);
 }
 
-// Во сколько «раздвигается» профиль со временем: в первые часы человек
-// физически не мог уйти далеко; к ~24 ч выходим на полную кривую профиля.
-function timeScale(hours) {
+// ЗАКОН «РАССТОЯНИЕ ↔ ВРЕМЯ» (v41)
+// ------------------------------------------------------------
+// Раньше профиль линейно «раздвигался» до 24 ч одинаково для всех. Теперь два
+// независимых ограничения, как в реальном поиске:
+//  1) ФОРМА. Через t часов область поиска развёрнута на долю
+//        s(t) = s0 + (1 - s0) · (1 - e^(-t/tau)),   s0 = 0,12.
+//     tau — своя для каждой группы: ребёнок «разворачивается» за ~3 ч
+//     (дальше он не уйдёт), деменция — за ~4 ч, турист — за ~14 ч и продолжает
+//     расширяться сутками. Экспонента вместо линейного роста убирает
+//     неестественный излом на 24-м часу.
+//  2) ПРЕДЕЛ. Дальше vMax · t (+0,3 км на неточность точки) человек физически
+//     не мог оказаться: вероятность там = 0. Через 3 часа после пропажи
+//     турист не может быть в 20 км, а через 30 минут — в 5 км.
+// Оба ограничения видны в консоли и в подсказке профиля.
+const PROFILE_SCALE_MIN = 0.12;
+
+function profileScale(profile, hours) {
     const t = Math.max(0, hours);
-    return Math.min(1, 0.25 + 0.75 * (t / 24));
+    const tau = (profile && profile.tau) ? profile.tau : 10;
+    return PROFILE_SCALE_MIN + (1 - PROFILE_SCALE_MIN) * (1 - Math.exp(-t / tau));
 }
 
-// Плотность вероятности (1/км²) на расстоянии dKm от точки потери.
-// Кусочно-постоянная: доля F(r2)-F(r1) делится на площадь кольца
-// (для внутреннего диска r1=0). Радиусы масштабируются на s=timeScale(hours):
-// при s<1 профиль «сжат» к точке (человек ещё не мог уйти далеко).
-function radialDensityAt(profile, s, dKm) {
-    if (!profile || !profile.cum || dKm < 0) return 0;
-    const pts = [[0, 0]].concat(profile.cum);
-    const lastR = pts[pts.length - 1][0] * s;
-    if (dKm >= lastR) return 0;
-    for (let i = 0; i < pts.length - 1; i++) {
-        const r1 = pts[i][0] * s;
-        const r2 = pts[i + 1][0] * s;
+// Радиус (км), дальше которого находка физически невозможна за это время.
+function profileHardRangeKm(profile, hours) {
+    const v = (profile && profile.vMax) ? profile.vMax : 2;
+    const t = Math.max(0, hours);
+    const cum = (profile && profile.cum) ? profile.cum : null;
+    const last = (cum && cum.length) ? cum[cum.length - 1][0] : 40;
+    return Math.min(last, v * t + 0.3);
+}
+
+// Совместимость со старым кодом: масштаб формы для общего профиля.
+function timeScale(hours) {
+    return profileScale(SUBJECT_PROFILES['generic'], hours);
+}
+
+// ПЛОТНОСТЬ ВЕРОЯТНОСТИ по расстоянию от точки потери (1/км²).
+// Раньше здесь стоял «вес» (1 - F(r)), и это давало заметную ошибку: масса
+// размазывалась слишком далеко. Проверка на числах (см. _tools/test_profiles.js)
+// показывала, например, что 90 % вероятности для общего профиля оказывались
+// в 20 км вместо 8 км по данным ISRID.
+// Теперь берём настоящую кольцевую плотность: доля находок между двумя
+// радиусами делится на площадь этого кольца. Тогда суммарная вероятность
+// внутри радиуса R в точности равна доле F(R) из таблиц перцентилей.
+// Первые HUB_RADIUS_KM считаем одним кругом («ступица» — самое начало поиска):
+// иначе плотность в точке потери уходит в бесконечность и одна ячейка сетки
+// забирает всю вероятность.
+const HUB_RADIUS_KM = 0.2;
+
+function radialDensity(profile, s, dKm, hours) {
+    if (!profile || !profile.cum || s <= 0 || dKm < 0) return 0;
+    if (hours != null && dKm > profileHardRangeKm(profile, hours)) return 0;
+    const cum = profile.cum;
+    const lastR = cum[cum.length - 1][0] * s;
+    if (lastR <= 0 || dKm >= lastR) return 0;
+
+    const r0 = Math.min(HUB_RADIUS_KM, lastR * 0.5);
+    if (dKm <= r0) {
+        const share = cumFracAt(profile, s, r0);
+        const area = Math.PI * r0 * r0;
+        return area > 0 ? share / area : 0;
+    }
+    // кольцо между соседними точками кривой (нижняя граница — не ниже ступицы)
+    let lowerR = r0;
+    let lowerF = cumFracAt(profile, s, r0);
+    for (let i = 0; i < cum.length; i++) {
+        const r2 = cum[i][0] * s;
+        const f2 = cum[i][1];
+        if (r2 <= lowerR) continue;         // этот излом уже внутри ступицы
         if (dKm < r2) {
-            const share = pts[i + 1][1] - pts[i][1];
-            const area = Math.PI * (r2 * r2 - r1 * r1); // км²
-            return area > 0 ? share / area : 0;
+            const area = Math.PI * (r2 * r2 - lowerR * lowerR);
+            return area > 0 ? Math.max(0, f2 - lowerF) / area : 0;
         }
+        lowerR = r2;
+        lowerF = f2;
     }
     return 0;
 }
@@ -1595,11 +1684,11 @@ function cumFracAt(profile, scale, dKm) {
     return 1;
 }
 
-// Плавный «вес близости к точке потери»: 1 у точки потери, плавно падает к 0
-// на краю профиля. Используем его (а не пиковую плотность) для вероятности:
-// так точка потери влияет плавно, а не «всё или одна точка».
-function radialWeight(profile, scale, dKm) {
-    return Math.max(0, 1 - cumFracAt(profile, scale, dKm));
+// Оценка вероятности для ячейки сетки: плотность найденного человека на этом
+// удалении от точки потери с учётом профиля и времени. hours включает жёсткий
+// физический предел удаления (дальше vMax×часы человек не мог оказаться).
+function radialWeight(profile, scale, dKm, hours) {
+    return radialDensity(profile, scale, dKm, hours);
 }
 
 // Множитель привлекательности ландшафта S (множится на радиальную плотность).
@@ -2047,13 +2136,26 @@ function buildTerrainPoints(cells, terrain, polygonPoints, stepMeters, entryPoin
     }
     withW.sort((a, b) => (b.raw || 0) - (a.raw || 0));
 
-    // Отсекаем хвост мягким порогом 25% от ЛУЧШЕЙ точки. Благодаря плавному
-    // радиальному весу это оставляет точки в пределах ~75% радиуса профиля
-    // (несколько точек), а не «всё или одну».
+    // Отбираем точки, которые ВМЕСТЕ накрывают ~85 % вероятности зоны: идём от
+    // самых вероятных вниз и накапливаем их долю вероятности p. Так набор сам
+    // подстраивается под профиль: при компактном поле (ребёнок, деменция) это
+    // несколько точек вокруг точки потери, при «размазанном» (турист) — много
+    // точек по всей зоне. Раньше порог брался от плотности лучшей точки
+    // (25 %), и с точной кольцевой плотностью он оставлял только «ступицу».
     let significant = withW;
-    if (withW.length && (withW[0].raw || 0) > 0) {
-        const topRaw = withW[0].raw;
-        significant = withW.filter(function (p) { return (p.raw || 0) >= topRaw * 0.25; });
+    if (withW.length) {
+        const TARGET_P = 85;      // % вероятности зоны
+        const MIN_POINTS = 6;     // даже если одна ячейка «весит» почти всё
+        const MAX_POINTS = 150;
+        const keep = [];
+        let acc = 0;
+        for (const p of withW) {
+            keep.push(p);
+            acc += (p.p || 0);
+            if (acc >= TARGET_P && keep.length >= MIN_POINTS) break;
+            if (keep.length >= MAX_POINTS) break;
+        }
+        significant = keep;
     }
 
     // Отбор: СНАЧАЛА структурные места (перекрёстки, броды, укрытия…) —
@@ -2200,7 +2302,7 @@ function distanceToNearestPoint(lat, lng, points) {
 // Ранее здесь были ступенчатые функции distToScore()/scoreCell() с
 // взвешенной суммой «очков» за близость к объектам. Начиная с v40 они
 // заменены вероятностной моделью «плотность от точки потери × ландшафт»
-// (см. блок 7.5: SUBJECT_PROFILES, radialDensityAt, landMultiplier) —
+// (см. блок 7.5: SUBJECT_PROFILES, radialDensity, landMultiplier) —
 // старые функции удалены как устаревшие.
 
 // ---------- 10. КЛАСТЕРИЗАЦИЯ (flood-fill, умный порог) ----------
@@ -2660,9 +2762,12 @@ document.getElementById('find-zones-btn').addEventListener('click', async functi
         const profileId = getSubjectProfileId();
         const hours = getHoursElapsed();
         const prof = SUBJECT_PROFILES[profileId] || SUBJECT_PROFILES['generic'];
-        const tScale = timeScale(hours);
-        const searchRadiusKm = profileRadiusKm(prof, tScale, 0.9);
-        console.log('[APP] Профиль:', prof.label, '| часов с момента пропажи:', hours, '| scale:', tScale.toFixed(3), '| радиус поиска:', searchRadiusKm.toFixed(2), 'км');
+        const tScale = profileScale(prof, hours);
+        const hardKm = profileHardRangeKm(prof, hours);
+        const searchRadiusKm = Math.min(profileRadiusKm(prof, tScale, 0.9), hardKm);
+        console.log('[APP] Профиль:', prof.label, '| часов с момента пропажи:', hours,
+            '| разворот профиля:', tScale.toFixed(3), '| предел удаления:', hardKm.toFixed(2),
+            'км | радиус поиска:', searchRadiusKm.toFixed(2), 'км');
 
         let totalMass = 0, maxRaw = 0;
         const calcStart = performance.now();
@@ -2670,7 +2775,7 @@ document.getElementById('find-zones-btn').addEventListener('click', async functi
             let rho = 1;
             if (entryPoint) {
                 const dKm = getHaversineDistance(c, entryPoint) / 1000;
-                rho = radialWeight(prof, tScale, dKm);
+                rho = radialWeight(prof, tScale, dKm, hours);
             }
             const S = hasTerrain ? landMultiplier(c, terrain) : 1;
             c.raw = rho * S;
@@ -3035,16 +3140,29 @@ if (navigator.geolocation) {
 }
 
 // ---------- 19. ПОДСКАЗКА ПРОФИЛЯ ----------
-// Живой текст под выбором «Кто потерялся»: краткое пояснение, как искать.
+// Живой текст под выбором «Кто потерялся»: как искать и — главное — насколько
+// далеко человек мог уйти за указанное время (закон «расстояние ↔ время»).
 (function () {
     function refreshProfileHint() {
         const pid = getSubjectProfileId();
         const prof = SUBJECT_PROFILES[pid] || SUBJECT_PROFILES['generic'];
+        const hours = getHoursElapsed();
+        const hard = profileHardRangeKm(prof, hours);
+        const r90 = profileRadiusKm(prof, profileScale(prof, hours), 0.9);
         const ph = document.getElementById('profile-hint');
-        if (ph) ph.textContent = '«' + prof.label + '»: ' + prof.note;
+        if (!ph) return;
+        ph.textContent = '«' + prof.label + '»: ' + prof.note +
+            ' За ' + hours + ' ч человек мог уйти не дальше ' + hard.toFixed(1) + ' км' +
+            ' — дальше вероятность нулевая; 90 % находок в этой группе — в радиусе ' +
+            Math.min(r90, hard).toFixed(1) + ' км.';
     }
     const ps = document.getElementById('subject-profile');
     if (ps) ps.addEventListener('change', refreshProfileHint);
+    const he = document.getElementById('hours-elapsed');
+    if (he) {
+        he.addEventListener('change', refreshProfileHint);
+        he.addEventListener('input', refreshProfileHint);
+    }
     refreshProfileHint();
 })();
 
@@ -3421,6 +3539,133 @@ function codeToPlan(code) {
     return JSON.parse(decodeURIComponent(escape(atob(b64))));
 }
 
+// ---------- КОМПАКТНЫЙ КОД ДЛЯ QR (формат 2) ----------
+// Зачем: обычный JSON в base64 — это ~40 знаков на одну точку, поэтому QR
+// получался очень плотным (десятки мелких квадратиков), и камера телефона
+// часто его не читала. Здесь:
+//   • координаты — целые числа в 36-ричной системе, записанные как СМЕЩЕНИЕ от
+//     первой точки (дельты), единица = 0,00001° ≈ 1 м;
+//   • тип точки — одна буква, вероятность — целое число процентов.
+// Итог: примерно в 2,5–3 раза короче, модуль QR крупнее → читается заметно
+// надёжнее. Старые коды (формат 1) по-прежнему принимаются.
+const COMPACT_UNITS = 100000;              // 0,00001° ≈ 1,1 м по широте
+
+const PROF_CODE = {
+    'generic': 'g', 'child': 'c', 'teen': 'n', 'gatherer': 's', 'hiker': 'h',
+    'hunter': 'u', 'elderly': 'e', 'dementia': 'd', 'despondent': 'p'
+};
+const PROF_BY_CODE = (function () {
+    const m = {};
+    for (const k in PROF_CODE) m[PROF_CODE[k]] = k;
+    return m;
+})();
+
+const KIND_CODE = {
+    'x': 'x', 't': 't', 'fork': 'f', 'ford': 'd', 'hut': 'h', 'spring': 's',
+    'tower': 'w', 'gate': 'g', 'parking': 'p', 'rest': 'r', 'path': 'a', 'point': 'o'
+};
+const KIND_BY_CODE = (function () {
+    const m = {};
+    for (const k in KIND_CODE) m[KIND_CODE[k]] = k;
+    return m;
+})();
+
+// старые коды профилей из прежних версий приложения
+const LEGACY_PROF = {
+    'child-3': 'child', 'child-6': 'child', 'child-12': 'child',
+    'youth': 'teen', 'mushroomer': 'gatherer'
+};
+
+function q36(n) {
+    n = Math.round(n);
+    return (n < 0 ? '-' : '') + Math.abs(n).toString(36);
+}
+function u36(s) {
+    const neg = String(s).charAt(0) === '-';
+    const v = parseInt(neg ? String(s).slice(1) : String(s), 36);
+    return neg ? -v : (isFinite(v) ? v : 0);
+}
+
+function planToCompact(plan) {
+    const U = COMPACT_UNITS;
+    const poly = plan.poly || [];
+    const pts = plan.pts || [];
+    const anchor = poly[0] || plan.entry || (pts[0] ? [pts[0][0], pts[0][1]] : [0, 0]);
+    const alat = Math.round(anchor[0] * U), alng = Math.round(anchor[1] * U);
+    function delta(lat, lng) {
+        return q36(Math.round(lat * U) - alat) + ',' + q36(Math.round(lng * U) - alng);
+    }
+    const polyStr = poly.slice(1).map(function (p) { return delta(p[0], p[1]); }).join(';');
+    const entryStr = plan.entry ? delta(plan.entry[0], plan.entry[1]) : '-';
+    const ptsStr = pts.map(function (p) {
+        return delta(p[0], p[1]) + ',' + (KIND_CODE[p[2]] || 'o') + ',' +
+            Math.max(0, Math.round(p[3] || 0));
+    }).join(';');
+    return ['2', PROF_CODE[plan.prof] || 'g',
+        Math.max(0, Math.round(plan.hours == null ? 3 : plan.hours)),
+        q36(alat) + ',' + q36(alng), polyStr, entryStr, ptsStr].join('!');
+}
+
+function compactToPlan(str) {
+    const f = String(str).split('!');
+    if (f.length < 7 || f[0] !== '2') return null;
+    const U = COMPACT_UNITS;
+    const a = f[3].split(',');
+    const alat = u36(a[0]), alng = u36(a[1]);
+    function abs(pair) {
+        const p = pair.split(',');
+        return [(alat + u36(p[0])) / U, (alng + u36(p[1])) / U];
+    }
+    const poly = [[alat / U, alng / U]];
+    if (f[4]) f[4].split(';').forEach(function (s) { if (s) poly.push(abs(s)); });
+    const entry = (f[5] && f[5] !== '-') ? abs(f[5]) : null;
+    const pts = [];
+    if (f[6]) {
+        f[6].split(';').forEach(function (s) {
+            if (!s) return;
+            const p = s.split(',');
+            if (p.length < 4) return;
+            const c = abs(p[0] + ',' + p[1]);
+            pts.push([c[0], c[1], KIND_BY_CODE[p[2]] || 'point', parseFloat(p[3]) || 0]);
+        });
+    }
+    return {
+        v: 2,
+        prof: PROF_BY_CODE[f[1]] || 'generic',
+        hours: parseInt(f[2], 10) || 0,
+        poly: poly.length >= 3 ? poly : [],
+        entry: entry,
+        pts: pts
+    };
+}
+
+// Единая точка входа: любую строку кода превращаем в объект плана.
+function decodePlanCode(code) {
+    const s = String(code || '').trim();
+    if (!s) return null;
+    if (s.indexOf('2!') === 0) return compactToPlan(s);
+    try { return codeToPlan(s); } catch (e) {
+        console.log('[APP] Не удалось разобрать план:', e.message);
+        return null;
+    }
+}
+
+// Готовим ссылку для QR: сначала пробуем весь план компактным кодом,
+// если не влезает — оставляем самые вероятные точки (код становится крупнее
+// и читается с экрана ноутбука надёжнее). Полный план всегда доступен файлом.
+function buildQrLink() {
+    const base = location.origin + location.pathname;
+    const tries = [null, 15, 8, 5];      // null = все точки
+    for (let i = 0; i < tries.length; i++) {
+        const plan = buildPlan(tries[i]);
+        const code = planToCompact(plan);
+        const link = base + '#plan=' + code;
+        if (link.length <= 900 || i === tries.length - 1) {
+            return { link: link, code: code, points: (plan.pts || []).length, reduced: i > 0 };
+        }
+    }
+}
+
 function showQrCode() {
     if (!(zones && zones.length)) {
         alert('Сначала найдите вероятные зоны.');
@@ -3430,15 +3675,8 @@ function showQrCode() {
         alert('QR-код недоступен: не загрузился файл vendor/qrcode.min.js');
         return;
     }
-    const base = location.origin + location.pathname;
-    let link = base + '#plan=' + planToCode(buildPlan());   // полный план
-    let reduced = false;
-    // В QR влезает примерно 2 КБ ссылки. Если план больше — кладём в код
-    // только главные точки, а полный план передаём ссылкой.
-    if (link.length > 1900) {
-        link = base + '#plan=' + planToCode(buildPlan(10));
-        reduced = true;
-    }
+    const made = buildQrLink();
+    const link = made.link;
     const overlay = document.getElementById('qr-overlay');
     const box = document.getElementById('qr-box');
     const note = document.getElementById('qr-note');
@@ -3448,9 +3686,12 @@ function showQrCode() {
         qr.make();
         box.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 8, scalable: true });
         if (note) {
-            note.innerHTML = reduced
-                ? 'В коде — зона, точка потери и 10 самых вероятных точек. Полный план — на второй странице карточки «Маршрут», кнопкой «Показать QR-код» при меньшем числе точек.'
-                : 'В коде — весь план: зона поиска, точка потери и все точки поиска.';
+            const about = 'В коде ' + made.points + ' т.' +
+                (made.reduced ? ' (самые вероятные)' : ' (все)') +
+                ', длина ' + link.length + ' знаков.';
+            note.innerHTML = about + ' Наведите камеру телефона: приложение откроет тот же план. ' +
+                'Не читается — поднесите ближе, включите яркость на максимум, ' +
+                'или передайте план файлом (кнопка ниже).';
         }
     } catch (e) {
         box.innerHTML = '<div class="hint">План слишком большой для одного QR-кода (' + link.length +
@@ -3462,16 +3703,13 @@ function showQrCode() {
 
 // Применяет план по коду (используется и для ссылки, и для отсканированного QR)
 function applyPlanCode(code) {
-    let plan = null;
-    try { plan = codeToPlan(code); } catch (e) {
-        console.log('[APP] Не удалось разобрать план:', e.message);
-        return false;
-    }
+    const plan = decodePlanCode(code);
     if (!plan) return false;
 
-    if (plan.prof) {
+    const profId = LEGACY_PROF[plan.prof] || plan.prof;
+    if (profId && SUBJECT_PROFILES[profId]) {
         const sel = document.getElementById('subject-profile');
-        if (sel) { sel.value = plan.prof; sel.dispatchEvent(new Event('change')); }
+        if (sel) { sel.value = profId; sel.dispatchEvent(new Event('change')); }
     }
     if (plan.hours != null) {
         const h = document.getElementById('hours-elapsed');
@@ -3496,9 +3734,11 @@ function applyPlanCode(code) {
 }
 
 function applyPlanFromHash() {
-    const m = /[#&]plan=([A-Za-z0-9\-_]+)/.exec(location.hash || '');
+    // код может быть компактным (2!...) — тогда в нём есть ! ; , — или старым
+    // base64; берём всё до конца фрагмента или до следующего параметра
+    const m = /[#&]plan=([^&\s]+)/.exec(location.hash || '');
     if (!m) return false;
-    return applyPlanCode(m[1]);
+    return applyPlanCode(decodeURIComponent(m[1]));
 }
 
 // ---------- ФАЙЛ ПЛАНА: сохранение и загрузка ----------
@@ -3682,22 +3922,32 @@ function stopQrScanner() {
 }
 
 function onQrFound(text) {
+    const raw = String(text || '').trim();
     let code = null;
-    const m = /[#&]plan=([A-Za-z0-9\-_]+)/.exec(text || '');
+
+    // 1) обычный случай: в QR лежит ссылка вида .../main.html#plan=2!c!3!...
+    //    (в компактном коде есть знаки ! ; , — их тоже берём)
+    let m = /[#&]plan=([^&\s]+)/.exec(raw);
     if (m) {
         code = m[1];
-    } else if (/^[A-Za-z0-9\-_]{40,}$/.test((text || '').trim())) {
-        code = text.trim();          // в коде может быть только сам план
+    } else if (/^2!.+/.test(raw)) {
+        code = raw;                       // в QR только сам компактный план
+    } else if (/^[A-Za-z0-9\-_]{40,}$/.test(raw)) {
+        code = raw;                       // старый формат: base64-план целиком
     }
+
     if (!code) {
         scanSetStatus('Это не код нашей программы. Наведите камеру на QR-код из приложения.');
         return false;
     }
     const ok = applyPlanCode(code);
+    if (!ok) {
+        scanSetStatus('Код распознан, но план не читается. Сделайте QR-код заново в приложении.');
+        return false;
+    }
     stopQrScanner();
-    alert(ok ? 'План загружен: зона, точка потери и точки поиска на карте.'
-             : 'Не удалось прочитать план из кода.');
-    return ok;
+    alert('План загружен: зона, точка потери и точки поиска на карте.');
+    return true;
 }
 
 function scanFrame() {
@@ -3746,8 +3996,11 @@ function startQrScanner() {
     navigator.mediaDevices.getUserMedia({
         video: {
             facingMode: { ideal: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            // непрерывная автофокусировка: главная причина «код не читается» —
+            // камера сфокусирована на фоне, а не на экране с кодом
+            advanced: [{ focusMode: 'continuous' }]
         },
         audio: false
     })
@@ -3756,6 +4009,15 @@ function startQrScanner() {
             v.srcObject = stream;
             v.setAttribute('playsinline', 'true');
             v.setAttribute('muted', 'true');
+            // просим автофокус и увеличение отдельно: не все браузеры принимают
+            // их в общем запросе, но почти все умеют применить к дорожке
+            try {
+                const track = stream.getVideoTracks()[0];
+                if (track && track.applyConstraints) {
+                    track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] })
+                        .catch(function () { });
+                }
+            } catch (e) { }
             // начинаем читать кадры, когда камера реально дала картинку
             v.onloadedmetadata = function () {
                 scanSetStatus('Наведите камеру на QR-код плана…');
@@ -3766,8 +4028,9 @@ function startQrScanner() {
         .then(function () {
             setTimeout(function () {
                 if (scanStream) {
-                    scanSetStatus('Если код не читается: поднесите телефон ближе, протрите камеру и ' +
-                        'сделайте ярче экран с кодом. Или вставьте ссылку в поле ниже.');
+                    scanSetStatus('Если код не читается: поднесите телефон ближе, ' +
+                        'сделайте яркость экрана с кодом на максимум, ' +
+                        'или вставьте ссылку в поле ниже.');
                 }
             }, 12000);
         })
