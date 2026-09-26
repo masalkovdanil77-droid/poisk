@@ -14,14 +14,87 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Поиск людей" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
-    <!-- Библиотеки лежат локально в папке vendor: приложение не зависит от внешних
-         CDN, поэтому открывается и там, где они недоступны (частая причина
-         «работает только с VPN»). -->
-    <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
-    <link rel="stylesheet" href="design.css?v=61" />
-    <script src="vendor/leaflet/leaflet.js"></script>
-    <script src="vendor/turf.min.js"></script>
-    <script src="vendor/jsqr.min.js"></script>
+    <link rel="stylesheet" href="design.css?v=63" />
+
+    <!-- БИБЛИОТЕКИ.
+         Сначала берём их из папки vendor (тогда приложение работает и без интернета).
+         Если папка vendor не загружена на хостинг — автоматически берём те же
+         библиотеки с запасного адреса. Если и он недоступен, приложение
+         показывает понятное сообщение, а не «зависает». -->
+    <script>
+    (function () {
+        var LIBS = [
+            { local: 'vendor/leaflet/leaflet.js', cdn: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' },
+            { local: 'vendor/turf.min.js', cdn: 'https://unpkg.com/@turf/turf@6/turf.min.js' },
+            { local: 'vendor/jsqr.min.js', cdn: 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js' },
+            { local: 'vendor/qrcode.min.js', cdn: 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js' }
+        ];
+        var APP = ['logic.js?v=122', 'ui-sheet.js?v=9'];
+        window.__libSources = {};
+
+        function addCss(href, cdn) {
+            var l = document.createElement('link');
+            l.rel = 'stylesheet';
+            l.href = href;
+            l.onerror = function () {
+                if (!cdn) return;
+                var c = document.createElement('link');
+                c.rel = 'stylesheet';
+                c.href = cdn;
+                document.head.appendChild(c);
+            };
+            document.head.appendChild(l);
+        }
+
+        function loadOne(i, done) {
+            if (i >= LIBS.length) { done(); return; }
+            var s = document.createElement('script');
+            s.src = LIBS[i].local;
+            s.onload = function () {
+                window.__libSources[LIBS[i].local] = 'vendor';
+                loadOne(i + 1, done);
+            };
+            s.onerror = function () {
+                // локального файла нет — пробуем запасной адрес
+                var c = document.createElement('script');
+                c.src = LIBS[i].cdn;
+                c.onload = function () {
+                    window.__libSources[LIBS[i].local] = 'резервный адрес';
+                    console.log('[APP] ' + LIBS[i].local + ' не найден — загружен с резервного адреса');
+                    loadOne(i + 1, done);
+                };
+                c.onerror = function () {
+                    window.__libSources[LIBS[i].local] = 'нет';
+                    console.log('[APP] не удалось загрузить ' + LIBS[i].local);
+                    loadOne(i + 1, done);
+                };
+                document.head.appendChild(c);
+            };
+            document.head.appendChild(s);
+        }
+
+        function startApp() {
+            APP.forEach(function (src) {
+                var s = document.createElement('script');
+                s.src = src;
+                document.body.appendChild(s);
+            });
+        }
+
+        addCss('vendor/leaflet/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+
+        function begin() {
+            loadOne(0, function () {
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', startApp);
+                } else {
+                    startApp();
+                }
+            });
+        }
+        begin();
+    })();
+    </script>
 </head>
 <body>
 
@@ -244,8 +317,5 @@
 
 </div><!-- /app-body -->
 
-<script src="vendor/qrcode.min.js"></script>
-<script src="logic.js?v=120"></script>
-<script src="ui-sheet.js?v=7"></script>
 </body>
 </html>
