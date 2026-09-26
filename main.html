@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-title" content="Поиск людей" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" href="icon-192.png" />
-    <link rel="stylesheet" href="design.css?v=67" />
+    <link rel="stylesheet" href="design.css?v=72" />
 
     <!-- БИБЛИОТЕКИ.
          Сначала берём их из папки vendor (тогда приложение работает и без интернета).
@@ -36,7 +36,7 @@
             { local: 'vendor/qrcode.min.js', root: 'qrcode.min.js',
               cdn: 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js' }
         ];
-        var APP = ['logic.js?v=126', 'ui-sheet.js?v=13'];
+        var APP = ['logic.js?v=131', 'ui-sheet.js?v=15'];
         window.__libSources = {};
 
         function addCss() {
@@ -235,6 +235,12 @@
                         </select>
                     </div>
                     <div class="hint">Шаг сетки — размер ячейки (по умолчанию 250 м). Чем меньше шаг, тем детальнее, но зоны мельче и расчёт дольше.</div>
+
+                    <div id="zones-scroll" class="zones-scroll">
+                        <div class="zones-title" title="P — доля вероятности найти человека в этой точке (из 100 % по всей зоне)">Найденные точки</div>
+                        <div id="zones-list" class="zones-list"></div>
+                        <div id="zones-empty" class="zones-empty">Точки пока не найдены.<br>Нажмите «Найти вероятные зоны».</div>
+                    </div>
                 </div>
 
                 <div class="control-card" id="card-5" data-card="5">
@@ -255,16 +261,20 @@
                         <div id="progress-text" class="progress-text">Оптимизация... 0%</div>
                     </div>
 
-                    <div class="sub-title">Передать план на телефон</div>
+                    <div class="sub-title">Передача маршрута</div>
                     <div class="row-2">
                         <button id="qr-btn" class="btn btn-primary">▦ Показать QR-код</button>
                         <button id="scan-qr-btn" class="btn btn-secondary">📷 Сканировать QR</button>
                     </div>
-                    <div id="share-status" class="nav-status">Покажите QR-код группе — она откроет приложение и увидит эту же зону, точки и маршрут. Второй кнопкой можно отсканировать код с другого телефона.</div>
-                </div>
-                </div>
+                    <div id="share-status" class="nav-status">QR-код передаёт зону, точки и маршрут на телефон группы. Второй кнопкой можно отсканировать код с другого телефона.</div>
 
-                
+                    <div class="row-2">
+                        <button id="save-plan-btn" class="btn btn-secondary">💾 Сохранить в файл</button>
+                        <button id="load-plan-btn" class="btn btn-secondary">📂 Загрузить из файла</button>
+                    </div>
+                    <input type="file" id="plan-file-input" accept=".json,.mchsplan,application/json" class="hidden-input">
+                    <div id="file-status" class="nav-status">Файл плана хранит зону, точки, маршрут и сохранённую карту района — его можно перенести на любое устройство.</div>
+                </div>
 
                 <div class="control-card" id="card-6" data-card="6">
                     <div class="card-title"><span class="card-num">6</span><span class="card-name">Офлайн-карта района</span></div>
@@ -274,13 +284,6 @@
                     <div id="offline-status" class="nav-status">Проверяю сохранённую карту…</div>
                 </div>
             </div><!-- /cards-scroll -->
-
-            <!-- Список найденных зон -->
-            <div id="zones-scroll" class="zones-scroll">
-                <div class="zones-title" title="P — доля вероятности найти человека в этой точке (из 100 % по всей зоне)">Найденные зоны</div>
-                <div id="zones-list" class="zones-list"></div>
-                <div id="zones-empty" class="zones-empty">Зоны пока не найдены.<br>Нажмите «Найти вероятные зоны».</div>
-            </div>
 
             <!-- Итоговые цифры -->
             <div id="status-bar">
@@ -308,6 +311,10 @@
                 <video id="scan-video" playsinline muted></video>
             </div>
             <div id="scan-status" class="hint">Наведите камеру на QR-код плана…</div>
+            <div class="row">
+                <input type="text" id="scan-manual" placeholder="или вставьте ссылку/код вручную">
+                <button id="scan-apply" class="btn">Применить</button>
+            </div>
             <button id="scan-close" class="btn">Закрыть</button>
         </div>
     </div>

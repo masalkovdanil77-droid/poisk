@@ -254,6 +254,69 @@ body.sheet-open .map-hint {
     display: none;
 }
 
+/* Блок найденных точек внутри карточки «Вероятные зоны» */
+.control-card .zones-scroll {
+    background: var(--surface-2);
+    border: none;
+    padding: 8px;
+    margin-top: 2px;
+}
+
+.control-card .zones-title {
+    font-size: 13px;
+}
+
+/* Ручной ввод кода в окне сканера */
+#scan-manual {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 40px;
+}
+
+#scan-apply {
+    flex: 0 0 auto;
+}
+
+/* Подсказка про установку приложения на телефон */
+.install-hint {
+    position: fixed;
+    z-index: 80;
+    left: 12px;
+    right: 12px;
+    bottom: calc(var(--peek-h) + 16px + env(safe-area-inset-bottom));
+    padding: 12px 34px 12px 14px;
+    border-radius: var(--radius);
+    background: var(--surface);
+    border-left: 4px solid var(--accent);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.install-hint b {
+    color: var(--accent);
+}
+
+.install-hint-close {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--text-dim);
+    font-size: 17px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+body.sheet-open .install-hint {
+    display: none;
+}
+
 /* Плашка «что сейчас происходит» для действий, запущенных кнопками с карты */
 .action-pill {
     position: fixed;
@@ -728,7 +791,7 @@ body.theme-dark #network-status.checking {
     gap: 3px;
     font-size: 12.5px;
     /* видно ровно три точки, дальше список прокручивается колесом мыши */
-    max-height: 116px;
+    max-height: 138px;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
@@ -747,7 +810,7 @@ body.theme-dark #network-status.checking {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 8px;
+    padding: 5px 8px;
     background: var(--surface-2);
     border-radius: 6px;
     border-left: 3px solid var(--accent);
@@ -1121,7 +1184,7 @@ body.theme-dark #network-status.checking {
     }
 
     .zones-list {
-        max-height: 116px;      /* на ПК тоже три точки, дальше прокрутка */
+        max-height: 138px;      /* на ПК тоже три точки, дальше прокрутка */
     }
 
     /* сканер QR нужен только на телефоне */

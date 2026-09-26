@@ -3358,27 +3358,24 @@ map.on('tileerror', function () {
 // ---------- 24.1 ПРОФИЛЬ УСТРОЙСТВА ----------
 // На телефоне считаем меньше ячеек, не рисуем лишние подписи и «тепловую карту»
 // на слабых устройствах — чтобы интерфейс не тормозил.
+// Режимов ровно два: телефон и компьютер. Порог тот же, что в оформлении
+// (до 900 точек по ширине — телефон, дальше компьютер).
 const DEVICE = (function () {
-    // Класс устройства считаем по ширине окна: именно от неё зависит, какой
-    // интерфейс показан. Ширина экрана — только запасной вариант.
     const w = window.innerWidth || (window.screen && screen.width) || 9999;
     const cores = navigator.hardwareConcurrency || 4;
     const mem = navigator.deviceMemory || 4;
-    const touch = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
-    let cls = 'компьютер';
-    if (w <= 820 || (touch && w <= 1024)) cls = 'телефон';
-    else if (w <= 1280 && touch) cls = 'планшет';
+    const isPhone = w <= 900;
     const weak = cores <= 4 || mem <= 4;
     return {
-        cls: cls,
+        cls: isPhone ? 'телефон' : 'компьютер',
+        isPhone: isPhone,
         cores: cores,
         mem: mem,
         weak: weak,
-        maxCells: cls === 'телефон' ? 12000 : (cls === 'планшет' ? 25000 : 60000),
-        maxPoints: cls === 'телефон' ? 60 : 90,
-        heat: !(cls === 'телефон' && weak),   // тепловая карта — самое «тяжёлое» в отрисовке
-        segLabels: true,
-        isPhone: cls === 'телефон'
+        maxCells: isPhone ? 12000 : 60000,
+        maxPoints: isPhone ? 60 : 90,
+        heat: !(isPhone && weak),   // тепловая карта — самое «тяжёлое» в отрисовке
+        segLabels: true
     };
 })();
 console.log('[APP] Устройство:', DEVICE.cls, '| ядер:', DEVICE.cores, '| памяти ~', DEVICE.mem, 'ГБ',
@@ -3504,6 +3501,162 @@ function applyPlanFromHash() {
     return applyPlanCode(m[1]);
 }
 
+// ---------- ФАЙЛ ПЛАНА: сохранение и загрузка ----------
+// В файл попадает всё, что нужно для продолжения работы на другом устройстве:
+// контур зоны, точка потери, найденные точки, порядок обхода и (если скачан)
+// сохранённый район — схема карты и данные OSM для расчёта без интернета.
+const PLAN_FILE_VERSION = 1;
+
+function buildPlanFile() {
+    const plan = buildPlan();          // зона, точка потери, точки поиска
+    plan.file = 'mchs-plan';
+    plan.fileVersion = PLAN_FILE_VERSION;
+    plan.app = 'Поиск людей в лесу';
+    plan.savedAt = new Date().toISOString();
+
+    const gs = document.getElementById('grid-step');
+    const ot = document.getElementById('opt-time');
+    if (gs) plan.gridStep = parseInt(gs.value, 10);
+    if (ot) plan.optTime = parseInt(ot.value, 10);
+
+    // порядок обхода — списком координат, чтобы файл читался любой версией
+    if (lastRoute && lastRoute.length && routePoints && routePoints.length) {
+        plan.route = lastRoute.map(function (i) {
+            return [+routePoints[i].lat.toFixed(5), +routePoints[i].lng.toFixed(5)];
+        });
+        const dist = document.getElementById('stat-distance');
+        if (dist) plan.routeKm = parseFloat(dist.textContent) || 0;
+    }
+
+    // сохранённая карта района (если её скачивали)
+    if (offlineData && offlineData.terrain) {
+        plan.map = {
+            bbox: offlineData.bbox,
+            png: offlineData.png || null,
+            terrain: offlineData.terrain,
+            savedAt: offlineData.savedAt || null
+        };
+    }
+    return plan;
+}
+
+function exportPlanFile() {
+    if (!(polygonPoints && polygonPoints.length >= 3)) {
+        alert('Сначала очертите зону поиска.');
+        return;
+    }
+    let plan;
+    try {
+        plan = buildPlanFile();
+    } catch (e) {
+        alert('Не удалось собрать файл: ' + e.message);
+        return;
+    }
+    const text = JSON.stringify(plan);
+    const d = new Date();
+    const p2 = function (v) { return (v < 10 ? '0' : '') + v; };
+    const name = 'marshrut_' + d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) +
+        '_' + p2(d.getHours()) + p2(d.getMinutes()) + '.mchsplan.json';
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    const el = document.getElementById('file-status');
+    if (el) {
+        const kb = Math.round(text.length / 1024);
+        el.innerHTML = '💾 Файл сохранён: <b>' + name + '</b> (' + kb + ' КБ, точек ' +
+            (plan.pts || []).length + (plan.route ? ', маршрут есть' : ', без маршрута') +
+            (plan.map ? ', с картой района' : '') + ').<br>Его можно открыть в этом приложении на любом устройстве.';
+    }
+    console.log('[APP] План сохранён в файл:', name, kb, 'КБ');
+}
+
+function importPlanFile(file) {
+    const reader = new FileReader();
+    reader.onload = function () {
+        let plan = null;
+        try {
+            plan = JSON.parse(String(reader.result));
+        } catch (e) {
+            alert('Файл не читается: это не файл плана.');
+            return;
+        }
+        if (!plan || !plan.poly) {
+            alert('В файле нет зоны поиска — похоже, это не наш файл плана.');
+            return;
+        }
+        if (plan.prof) {
+            const sel = document.getElementById('subject-profile');
+            if (sel) { sel.value = plan.prof; sel.dispatchEvent(new Event('change')); }
+        }
+        if (plan.hours != null) {
+            const h = document.getElementById('hours-elapsed');
+            if (h) h.value = plan.hours;
+        }
+        polygonPoints = plan.poly.map(function (p) { return { lat: p[0], lng: p[1] }; });
+        finishPolygon();
+        try {
+            map.fitBounds(L.latLngBounds(polygonPoints.map(function (p) { return [p[0], p[1]]; })).pad(0.1));
+        } catch (e) { }
+        if (plan.entry) setEntryPoint(plan.entry[0], plan.entry[1]);
+
+        if (plan.gridStep) {
+            const gs = document.getElementById('grid-step');
+            if (gs) gs.value = String(plan.gridStep);
+        }
+        if (plan.optTime) {
+            const ot = document.getElementById('opt-time');
+            if (ot) ot.value = String(plan.optTime);
+        }
+
+        if (plan.pts && plan.pts.length) {
+            zones = plan.pts.map(function (p) {
+                return { lat: p[0], lng: p[1], kind: p[2], prob: p[3], score: 50, cells: 1, cellList: null };
+            });
+            renderZones(zones);
+        }
+
+        // маршрут из файла
+        if (plan.route && plan.route.length >= 2) {
+            routePoints = plan.route.map(function (p) { return { lat: p[0], lng: p[1], score: 50 }; });
+            lastRoute = routePoints.map(function (_, i) { return i; });
+            let dist = 0;
+            for (let i = 1; i < routePoints.length; i++) {
+                dist += getHaversineDistance(routePoints[i - 1], routePoints[i]);
+            }
+            drawRoute(lastRoute, dist);
+        }
+
+        // сохранённая карта района — кладём в память устройства
+        if (plan.map && plan.map.terrain) {
+            const pack = {
+                bbox: plan.map.bbox, png: plan.map.png || null,
+                terrain: plan.map.terrain, savedAt: plan.map.savedAt || Date.now()
+            };
+            idbSet('zone', pack).then(function () {
+                offlineData = pack;
+                offlineSetStatus('🗺 Из файла загружена карта района — расчёт работает без интернета.');
+            }).catch(function () { });
+        }
+
+        const el = document.getElementById('file-status');
+        if (el) {
+            el.innerHTML = '📂 Загружено: точек <b>' + (plan.pts || []).length + '</b>' +
+                (plan.route ? ', маршрут восстановлен' : '') +
+                (plan.map ? ', карта района сохранена' : '') +
+                (plan.savedAt ? '<br><span class="hint">Файл от ' + new Date(plan.savedAt).toLocaleString() + '</span>' : '');
+        }
+        console.log('[APP] План загружен из файла: точек', (plan.pts || []).length);
+    };
+    reader.readAsText(file);
+}
+
 // ---------- СКАНЕР QR-КОДА ----------
 // Читаем код камерой телефона и сразу применяем план. Работает на https
 // (на localhost тоже): браузеры разрешают камеру только в защищённом режиме.
@@ -3550,15 +3703,22 @@ function onQrFound(text) {
 function scanFrame() {
     const v = document.getElementById('scan-video');
     if (!scanStream || !v) return;
-    if (v.readyState === v.HAVE_ENOUGH_DATA && typeof jsQR === 'function') {
+    if (v.readyState >= 2 && v.videoWidth > 0 && typeof jsQR === 'function') {
         if (!scanCanvas) scanCanvas = document.createElement('canvas');
-        const ctx = scanCanvas.getContext('2d');
-        scanCanvas.width = v.videoWidth;
-        scanCanvas.height = v.videoHeight;
-        ctx.drawImage(v, 0, 0, scanCanvas.width, scanCanvas.height);
+        const ctx = scanCanvas.getContext('2d', { willReadFrequently: true });
+        // уменьшаем кадр до 900 точек по ширине: так jsQR читает точнее и быстрее
+        const scale = Math.min(1, 900 / v.videoWidth);
+        const w = Math.max(1, Math.round(v.videoWidth * scale));
+        const h = Math.max(1, Math.round(v.videoHeight * scale));
+        if (scanCanvas.width !== w || scanCanvas.height !== h) {
+            scanCanvas.width = w;
+            scanCanvas.height = h;
+        }
+        ctx.drawImage(v, 0, 0, w, h);
         try {
-            const img = ctx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
-            const res = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+            const img = ctx.getImageData(0, 0, w, h);
+            // attemptBoth — читает и обычный код, и «негатив» с тёмного экрана
+            const res = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
             if (res && res.data) {
                 if (onQrFound(res.data)) return;
             }
@@ -3566,7 +3726,7 @@ function scanFrame() {
             console.log('[SCAN] кадр не разобран:', e.message);
         }
     }
-    scanTimer = setTimeout(scanFrame, 250);
+    scanTimer = setTimeout(scanFrame, 200);
 }
 
 function startQrScanner() {
@@ -3583,16 +3743,33 @@ function startQrScanner() {
     }
     ov.classList.remove('hidden');
     scanSetStatus('Запрашиваю камеру…');
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+    navigator.mediaDevices.getUserMedia({
+        video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+        },
+        audio: false
+    })
         .then(function (stream) {
             scanStream = stream;
             v.srcObject = stream;
             v.setAttribute('playsinline', 'true');
+            v.setAttribute('muted', 'true');
+            // начинаем читать кадры, когда камера реально дала картинку
+            v.onloadedmetadata = function () {
+                scanSetStatus('Наведите камеру на QR-код плана…');
+                scanFrame();
+            };
             return v.play();
         })
         .then(function () {
-            scanSetStatus('Наведите камеру на QR-код плана…');
-            scanFrame();
+            setTimeout(function () {
+                if (scanStream) {
+                    scanSetStatus('Если код не читается: поднесите телефон ближе, протрите камеру и ' +
+                        'сделайте ярче экран с кодом. Или вставьте ссылку в поле ниже.');
+                }
+            }, 12000);
         })
         .catch(function (err) {
             console.log('[SCAN] камера не открылась:', err && err.name);
@@ -3626,6 +3803,31 @@ function terrainCacheKey(polygonPoints) {
 
     const btnScan = document.getElementById('scan-qr-btn');
     if (btnScan) btnScan.addEventListener('click', startQrScanner);
+
+    // запасной вариант: вставить ссылку или код вручную
+    const btnScanApply = document.getElementById('scan-apply');
+    if (btnScanApply) {
+        btnScanApply.addEventListener('click', function () {
+            const inp = document.getElementById('scan-manual');
+            const val = inp ? String(inp.value || '').trim() : '';
+            if (!val) { scanSetStatus('Вставьте ссылку или код плана в поле.'); return; }
+            onQrFound(val);
+        });
+    }
+
+    // файл плана
+    const btnSavePlan = document.getElementById('save-plan-btn');
+    if (btnSavePlan) btnSavePlan.addEventListener('click', exportPlanFile);
+
+    const planInput = document.getElementById('plan-file-input');
+    const btnLoadPlan = document.getElementById('load-plan-btn');
+    if (btnLoadPlan && planInput) {
+        btnLoadPlan.addEventListener('click', function () { planInput.click(); });
+        planInput.addEventListener('change', function () {
+            if (this.files && this.files[0]) importPlanFile(this.files[0]);
+            this.value = '';
+        });
+    }
 
     const btnScanClose = document.getElementById('scan-close');
     if (btnScanClose) btnScanClose.addEventListener('click', stopQrScanner);

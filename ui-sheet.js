@@ -56,6 +56,38 @@
         window.addEventListener('load', function () { setTimeout(checkBoot, 1200); });
     }
 
+    // ---------- подсказка про установку на телефон ----------
+    // Показывается один раз и только если приложение открыто в браузере, а не
+    // запущено с домашнего экрана.
+    (function installHint() {
+        var standalone = false;
+        try {
+            standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+                window.navigator.standalone === true;
+        } catch (e) { }
+        if (standalone) return;
+        if (!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '')) return;
+        var KEY = 'mchs-install-hint';
+        try { if (localStorage.getItem(KEY)) return; } catch (e) { }
+
+        window.addEventListener('load', function () {
+            setTimeout(function () {
+                var el = document.createElement('div');
+                el.className = 'install-hint';
+                el.innerHTML = '<button class="install-hint-close" type="button" aria-label="Закрыть">×</button>' +
+                    '<b>Установите приложение на телефон</b><br>' +
+                    'Меню браузера (⋮ или «Поделиться») → <b>«Добавить на главный экран»</b>.<br>' +
+                    'Тогда оно будет открываться как обычное приложение, без адресной строки.';
+                document.body.appendChild(el);
+                try { localStorage.setItem(KEY, '1'); } catch (e) { }
+                el.addEventListener('click', function (e) {
+                    if (e.target && e.target.classList.contains('install-hint-close')) el.remove();
+                });
+                setTimeout(function () { if (el.parentNode) el.remove(); }, 25000);
+            }, 5000);
+        });
+    })();
+
     var sheet = document.getElementById('control-panel');
     if (!sheet) return;
 
