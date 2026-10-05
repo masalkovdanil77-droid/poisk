@@ -4,6 +4,12 @@
 //  оптимизация маршрута (TSP) в Web Worker.
 // ============================================================
 
+// Версия сборки. Показывается в панели (строка «Версия») и печатается в консоль:
+// по ней сразу видно, обновилось ли приложение на телефоне. Номер должен
+// совпадать с logic.js?v=... в main.html — это проверяет _tools/make_pc_archive.py.
+const APP_VERSION = '138';
+console.log('[APP] версия приложения ' + APP_VERSION);
+
 // ---------- 0. ПРОВЕРКА БИБЛИОТЕК ----------
 // Если папка vendor не загрузилась на хостинг, карта не создастся и приложение
 // молча «зависнет». Поэтому сначала предупреждаем понятным текстом.
@@ -3555,6 +3561,21 @@ console.log('[APP] Устройство:', DEVICE.cls, '| ядер:', DEVICE.cor
 function refreshDeviceStat() {
     const el = document.getElementById('stat-device');
     if (el) el.textContent = DEVICE.cls;
+    const ver = document.getElementById('stat-version');
+    if (ver) ver.textContent = APP_VERSION;
+}
+
+// Если приложение обновилось (служба обновления загрузила новую версию), один
+// раз перезагружаем страницу — иначе телефон может долго работать на старой
+// версии и не понимать новые QR-коды. План и зона при этом сохраняются.
+if ('serviceWorker' in navigator) {
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (reloaded) return;
+        reloaded = true;
+        console.log('[APP] пришла новая версия — перезагружаю страницу');
+        location.reload();
+    });
 }
 
 // ---------- 24.4 ССЫЛКА-ПЛАН, QR-КОД И СКАНЕР ----------
@@ -4068,53 +4089,71 @@ function resetScanParts() {
     scanPartsTotal = 0;
 }
 
-function onQrFound(text) {
-    const raw = String(text || '').trim();
-    let code = null;
+// РАЗБОР ТЕКСТА, КОТОРЫЙ ВЕРНУЛ СКАНЕР (или человек вставил в поле).
+// Возвращает одно из трёх:
+//   { kind:'chunk', num, total, chunk } — часть многочастного кода;
+//   { kind:'code', code }               — целый план (наш компактный или старый base64);
+//   { kind:'unknown' }                  — это не наш код.
+// ВАЖНО: текст может прийти с процентным кодированием (знак «!» превращается в
+// «%21», если ссылку переслали через мессенджер или вставили в адресную строку).
+// Раньше сканер это не раскодировал, и код переставал читаться — отсюда была
+// ошибка «план не читается» при вставке ссылки.
+function parseScannedText(text) {
+    let raw = String(text == null ? '' : text).trim();
+    if (!raw) return { kind: 'unknown' };
 
-    // 0) часть многочастного кода (и в виде ссылки, и как голый текст)
-    let chunkMatch = /(?:[#&]plan=)?(3![^\s]+)/.exec(raw);
-    if (chunkMatch) {
-        const fields = chunkMatch[1].split('!');
-        const num = parseInt(fields[1], 10);
-        const total = parseInt(fields[2], 10);
-        const chunk = fields.slice(3).join('!');
+    if (raw.indexOf('%') >= 0) {
+        try { raw = decodeURIComponent(raw); } catch (e) { /* оставляем как есть */ }
+    }
+    // если это ссылка — берём только хвост после «#plan=» (до конца строки)
+    const m = /[#&]plan=([\s\S]+)$/.exec(raw);
+    if (m) raw = m[1].trim();
+
+    if (raw.indexOf('3!') === 0) {
+        const f = raw.split('!');
+        const num = parseInt(f[1], 10);
+        const total = parseInt(f[2], 10);
+        const chunk = f.slice(3).join('!');
         if (num >= 1 && total >= 1 && num <= total && chunk) {
-            scanPartsTotal = total;
-            scanParts[num] = chunk;
-            const got = Object.keys(scanParts).length;
-            if (got < total) {
-                scanSetStatus('Получена часть ' + got + ' из ' + total +
-                    '. Наведите камеру на следующий код, не закрывая это окно.');
-                return false;             // продолжаем сканировать
-            }
-            let full = '';
-            for (let i = 1; i <= total; i++) full += scanParts[i];
-            resetScanParts();
-            code = full;
+            return { kind: 'chunk', num: num, total: total, chunk: chunk };
         }
     }
+    if (raw.indexOf('2!') === 0) return { kind: 'code', code: raw };
+    if (/^[A-Za-z0-9\-_]{40,}$/.test(raw)) return { kind: 'code', code: raw };
+    return { kind: 'unknown' };
+}
 
-    // 1) обычный случай: в QR лежит ссылка вида .../main.html#plan=2!c!3!...
-    //    (в компактном коде есть знаки ! ; , — их тоже берём)
-    if (!code) {
-        let m = /[#&]plan=([^&\s]+)/.exec(raw);
-        if (m) {
-            code = m[1];
-        } else if (/^2!.+/.test(raw)) {
-            code = raw;                       // в QR только сам компактный план
-        } else if (/^[A-Za-z0-9\-_]{40,}$/.test(raw)) {
-            code = raw;                       // старый формат: base64-план целиком
+function onQrFound(text) {
+    const parsed = parseScannedText(text);
+
+    // часть многочастного кода: складываем куски и применяем, когда есть все
+    if (parsed.kind === 'chunk') {
+        scanPartsTotal = parsed.total;
+        scanParts[parsed.num] = parsed.chunk;
+        const got = Object.keys(scanParts).length;
+        if (got < parsed.total) {
+            scanSetStatus('Получена часть ' + got + ' из ' + parsed.total +
+                '. Наведите камеру на следующий код, не закрывая это окно.');
+            return false;             // продолжаем сканировать
         }
+        let full = '';
+        for (let i = 1; i <= parsed.total; i++) full += scanParts[i];
+        resetScanParts();
+        return applyScannedPlan(full);
     }
 
-    if (!code) {
-        scanSetStatus('Это не код нашей программы. Наведите камеру на QR-код из приложения.');
-        return false;
-    }
+    if (parsed.kind === 'code') return applyScannedPlan(parsed.code);
+
+    scanSetStatus('Это не код нашей программы. Наведите камеру на QR-код из приложения ' +
+        '(версия ' + APP_VERSION + ').');
+    return false;
+}
+
+function applyScannedPlan(code) {
     const ok = applyPlanCode(code);
     if (!ok) {
-        scanSetStatus('Код распознан, но план не читается. Сделайте QR-код заново в приложении.');
+        scanSetStatus('Код нашей программы, но план не читается. Обновите приложение ' +
+            'на этом телефоне (сейчас версия ' + APP_VERSION + ') и покажите QR-код заново.');
         return false;
     }
     stopQrScanner();

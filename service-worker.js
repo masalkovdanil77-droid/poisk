@@ -7,7 +7,7 @@
    Поэтому без интернета карта будет пустой, но программа, маршрут,
    точки и навигатор (GPS) продолжат работать. */
 
-const CACHE = 'mchs-search-v18';
+const CACHE = 'mchs-search-v19';
 
 const ASSETS = [
   './',
@@ -66,15 +66,23 @@ self.addEventListener('fetch', function (e) {
   e.respondWith(
     caches.match(e.request).then(function (hit) {
       if (hit) return hit;
-      return fetch(e.request).then(function (resp) {
-        if (resp && (resp.status === 200 || resp.type === 'opaque')) {
-          var copy = resp.clone();
-          caches.open(CACHE).then(function (c) { c.put(e.request, copy); }).catch(function () { });
-        }
-        return resp;
-      }).catch(function () {
-        // нет сети: отдаём сохранённую страницу приложения
-        return caches.match('./main.html');
+      // Файлы запрашиваются с пометкой версии (?v=138), а в запасе лежат без неё.
+      // Без этой проверки приложение ломалось бы без интернета сразу после
+      // обновления: запрос с ?v= не находился бы в кэше.
+      var sameOrigin = url.origin === self.location.origin;
+      var bare = sameOrigin ? caches.match(url.origin + url.pathname) : Promise.resolve(null);
+      return bare.then(function (bareHit) {
+        if (bareHit) return bareHit;
+        return fetch(e.request).then(function (resp) {
+          if (resp && (resp.status === 200 || resp.type === 'opaque')) {
+            var copy = resp.clone();
+            caches.open(CACHE).then(function (c) { c.put(e.request, copy); }).catch(function () { });
+          }
+          return resp;
+        }).catch(function () {
+          // нет сети: отдаём сохранённую страницу приложения
+          return caches.match('./main.html');
+        });
       });
     })
   );
