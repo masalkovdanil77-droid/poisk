@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-title" content="Поиск людей" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" href="icon-192.png" />
-    <link rel="stylesheet" href="design.css?v=73" />
+    <link rel="stylesheet" href="design.css?v=76" />
 
     <!-- БИБЛИОТЕКИ.
          Сначала берём их из папки vendor (тогда приложение работает и без интернета).
@@ -36,7 +36,7 @@
             { local: 'vendor/qrcode.min.js', root: 'qrcode.min.js',
               cdn: 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js' }
         ];
-        var APP = ['logic.js?v=132', 'ui-sheet.js?v=16'];
+        var APP = ['logic.js?v=136', 'ui-sheet.js?v=17'];
         window.__libSources = {};
 
         function addCss() {
@@ -183,22 +183,22 @@
                 <div class="control-card" id="card-1" data-card="1">
                     <div class="card-title"><span class="card-num">1</span><span class="card-name">Зона поиска</span></div>
                     <button id="draw-polygon-btn" class="btn">Очертить зону поиска</button>
-                    <div class="hint">Кликните по карте, чтобы построить контур. Замкните, кликнув на первую точку.
-                        Когда зона уже есть, эта же кнопка её стирает.</div>
+                    <div class="hint">Обведите район поиска по карте. Закончите кликом по первой точке.
+                        Нажмите ещё раз, чтобы стереть зону.</div>
                 </div>
 
                 <div class="control-card" id="card-2" data-card="2">
                     <div class="card-title"><span class="card-num">2</span><span class="card-name">Точка потери</span></div>
                     <button id="set-entry-btn" class="btn">Указать точку потери</button>
-                    <div class="hint">Место, где человека видели последний раз. Влияет на вероятные зоны.
-                        Повторное нажатие убирает точку.</div>
+                    <div class="hint">Где человека видели последний раз. Поставьте кликом по карте —
+                        от неё считаются вероятные зоны.</div>
                 </div>
 
                 <div class="control-card" id="card-3" data-card="3">
                     <div class="card-title"><span class="card-num">3</span><span class="card-name">Ручные точки</span></div>
                     <button id="manual-zones-btn" class="btn">Добавить ручные точки</button>
-                    <div class="hint">Ставь дополнительные точки кликами по карте (клик по точке — удалить).
-                        Добавляются к авто-зонам и участвуют в маршруте. Повторное нажатие выключает режим.</div>
+                    <div class="hint">Места, которые вы знаете сами: клик по карте — поставить,
+                        клик по точке — убрать. Они попадут в маршрут.</div>
                 </div>
 
                 <div class="control-card" id="card-4" data-card="4">
@@ -232,7 +232,7 @@
                             <option value="250" selected>250 м</option>
                         </select>
                     </div>
-                    <div class="hint">Шаг сетки — размер ячейки (по умолчанию 250 м). Чем меньше шаг, тем детальнее, но зоны мельче и расчёт дольше.</div>
+                    <div class="hint">Размер клетки расчёта. Меньше шаг — точнее карта, но считает дольше.</div>
 
                     <div id="zones-scroll" class="zones-scroll">
                         <div class="zones-title" title="P — доля вероятности найти человека в этой точке (из 100 % по всей зоне)">Найденные точки</div>
@@ -252,7 +252,8 @@
                             <option value="900">15 мин</option>
                         </select>
                     </div>
-                    <div class="hint">Маршрут всегда посещает зоны от самой вероятной (P) к менее вероятным — приоритет задаётся автоматически.</div>
+                    <div class="hint">Сначала группа идёт в места с наибольшей вероятностью P,
+                        потом в остальные. Приоритет задаётся сам.</div>
                     <button id="optimize-btn" class="btn-route">ПОИСК МАРШРУТА</button>
                     <div id="progress-wrap" class="progress-wrap hidden">
                         <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
@@ -264,14 +265,15 @@
                         <button id="qr-btn" class="btn btn-primary">▦ Показать QR-код</button>
                         <button id="scan-qr-btn" class="btn btn-secondary">📷 Сканировать QR</button>
                     </div>
-                    <div id="share-status" class="nav-status">QR-код передаёт зону, точки и маршрут на телефон группы. Камеру наводить нужно внутри приложения (кнопка «Сканировать QR») — браузер не отдаёт странице картинку с системной камеры.</div>
+                    <div id="share-status" class="nav-status">QR-код передаёт на телефон группы
+                        маршрут и план: зону поиска, точку потери и порядок обхода точек.</div>
 
                     <div class="row-2">
                         <button id="save-plan-btn" class="btn btn-secondary">💾 Сохранить в файл</button>
                         <button id="load-plan-btn" class="btn btn-secondary">📂 Загрузить из файла</button>
                     </div>
                     <input type="file" id="plan-file-input" accept=".json,.mchsplan,application/json" class="hidden-input">
-                    <div id="file-status" class="nav-status">Файл плана хранит зону, точки, маршрут и сохранённую карту района — его можно перенести на любое устройство.</div>
+                    <div id="file-status" class="nav-status">Сохраните план файлом, чтобы открыть его на другом устройстве без интернета.</div>
                 </div>
 
                 <div class="control-card" id="card-6" data-card="6">
@@ -296,7 +298,7 @@
             </div>
 
             <!-- Геолокация: где я сейчас (без записи трека) -->
-            <div id="geo-line">Моё положение: нажмите <b>◎</b> на карте, чтобы показать себя.</div>
+            <div id="geo-line">Моё положение: нажмите <b>◎</b> на карте.</div>
 
         </div><!-- /sheet-content -->
     </aside>
@@ -309,8 +311,9 @@
                 <video id="scan-video" playsinline muted></video>
             </div>
             <div id="scan-status" class="hint">Наведите камеру на QR-код плана…</div>
-            <div class="row">
-                <input type="text" id="scan-manual" placeholder="или вставьте ссылку/код вручную">
+            <button id="scan-manual-toggle" class="link-btn" type="button">Код не читается — вставить ссылку вручную</button>
+            <div id="scan-manual-box" class="row hidden">
+                <input type="text" id="scan-manual" placeholder="вставьте ссылку или код">
                 <button id="scan-apply" class="btn">Применить</button>
             </div>
             <button id="scan-close" class="btn">Закрыть</button>
@@ -323,8 +326,13 @@
             <div class="qr-title">QR-код плана поиска</div>
             <div id="qr-box" class="qr-box"></div>
             <div id="qr-note" class="hint"></div>
-            <div class="hint">Группа наводит камеру телефона на этот код — открывается то же приложение
-                с этой зоной, точками и маршрутом. Интернет при этом нужен только для загрузки карты.</div>
+            <div class="link-row">
+                <input type="text" id="qr-link" readonly>
+                <button id="qr-copy-btn" class="btn btn-secondary" type="button">Копировать</button>
+                <button id="qr-share-btn" class="btn btn-secondary" type="button">Отправить</button>
+            </div>
+            <div class="hint">Ссылку можно переслать в мессенджер и открыть на телефоне —
+                тогда сканировать код не нужно.</div>
             <button id="qr-close" class="btn">Закрыть</button>
         </div>
     </div>

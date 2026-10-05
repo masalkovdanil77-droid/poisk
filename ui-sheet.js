@@ -390,36 +390,6 @@
         btn.addEventListener('click', function () { peekAction(card); });
     });
 
-    // ---------- значки состояния на иконках ----------
-    // Число найденных точек на «Вероятных зонах» и галочка на «Маршруте»:
-    // видно, что уже посчитано, не открывая панель.
-    function refreshPeekBadges() {
-        var zBtn = document.getElementById('peek-probable');
-        if (zBtn) {
-            var n = (typeof zones !== 'undefined' && zones) ? zones.length : 0;
-            setBadge(zBtn, n ? (n > 99 ? '99+' : String(n)) : '');
-        }
-        var rBtn = document.getElementById('peek-route');
-        if (rBtn) {
-            var drawn = (typeof polylinePath !== 'undefined') && polylinePath;
-            setBadge(rBtn, drawn ? '✓' : '');
-        }
-    }
-
-    function setBadge(btn, text) {
-        var b = btn.querySelector('.peek-badge');
-        if (!text) { if (b) b.remove(); return; }
-        if (!b) {
-            b = document.createElement('span');
-            b.className = 'peek-badge';
-            btn.appendChild(b);
-        }
-        b.textContent = text;
-    }
-
-    refreshPeekBadges();
-    setInterval(refreshPeekBadges, 1200);
-
     // ---------- режимы работы по клику на карте ----------
     // Когда включён режим «кликайте по карте», панель убирается,
     // а сверху появляется подсказка, что делать.

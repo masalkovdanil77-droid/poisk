@@ -422,7 +422,6 @@ body.sheet-open .action-pill {
 }
 
 .peek-btn {
-    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -437,24 +436,6 @@ body.sheet-open .action-pill {
     font-weight: 500;
     line-height: 1.15;
     cursor: pointer;
-}
-
-/* значок состояния: сколько точек найдено / маршрут построен */
-.peek-badge {
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 4px;
-    border-radius: 9px;
-    background: var(--accent);
-    color: #fff;
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 18px;
-    text-align: center;
-    pointer-events: none;
 }
 
 .peek-btn:hover {
@@ -671,6 +652,27 @@ input:focus {
 
 .hidden-input {
     display: none;
+}
+
+/* Маленькая текстовая кнопка-ссылка (например «вставить ссылку вручную») */
+.link-btn {
+    display: block;
+    width: 100%;
+    margin: 8px 0 4px;
+    padding: 4px 2px;
+    border: none;
+    background: none;
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 12.5px;
+    text-align: left;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.link-btn:hover {
+    color: var(--accent-hover);
 }
 
 #profile-hint {
@@ -997,6 +999,37 @@ body.theme-dark #network-status.checking {
     display: none !important;
 }
 
+/* Линейка расстояния на карте (масштаб): «—— 500 м ——».
+   На телефоне поднимаем её над свёрнутой панелью, а когда панель раскрыта —
+   прячем, чтобы не мешала. */
+.leaflet-bottom.leaflet-left {
+    bottom: calc(var(--peek-h, 96px) + 10px);
+    transition: bottom .28s cubic-bezier(.2, .8, .2, 1);
+}
+
+.leaflet-control-scale {
+    margin: 0 0 0 12px !important;
+}
+
+.leaflet-control-scale-line {
+    background: var(--surface) !important;
+    border: 1.5px solid var(--border) !important;
+    border-top: none !important;
+    color: var(--text) !important;
+    font-family: inherit !important;
+    font-size: 11.5px !important;
+    line-height: 1.15 !important;
+    padding: 2px 6px !important;
+    box-shadow: var(--shadow);
+    border-radius: 0 0 6px 6px !important;
+    white-space: nowrap;
+}
+
+body.sheet-open .leaflet-bottom.leaflet-left {
+    opacity: 0;
+    pointer-events: none;
+}
+
 .seg-label {
     position: absolute;
     transform: translate(-50%, -50%);
@@ -1113,13 +1146,63 @@ body.theme-dark #network-status.checking {
     background: #fff;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 8px;
+    padding: 6px;
 }
 
+/* QR-код рисуем как можно крупнее: чем больше точка кода на экране, тем
+   надёжнее его читает камера другого телефона. */
 .qr-box svg {
     width: 100%;
     height: auto;
-    max-width: 340px;
+    max-width: 420px;
+}
+
+/* Строка со ссылкой на план: скопировать или отправить в мессенджер */
+.link-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.link-row input {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12px;
+    padding: 7px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-2);
+    color: var(--text-dim);
+    font-family: inherit;
+}
+
+.link-row .btn {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 7px 10px;
+    font-size: 12.5px;
+}
+
+/* Код можно нажать — он раскроется на весь экран. Так модуль кода крупнее
+   всего, и камера второго телефона читает его уверенно. */
+.qr-box.qr-full {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    border: none;
+    border-radius: 0;
+    padding: 8px;
+    align-content: center;
+    cursor: zoom-out;
+}
+
+.qr-box.qr-full svg {
+    max-width: min(96vw, 92vh);
+    cursor: zoom-out;
+}
+
+.qr-box svg {
+    cursor: zoom-in;
 }
 
 /* Сканер */
@@ -1164,6 +1247,16 @@ body.theme-dark #network-status.checking {
 
     .leaflet-top.leaflet-right {
         top: 76px;
+    }
+
+    /* на компьютере панель сбоку, снизу линейке ничего не мешает */
+    .leaflet-bottom.leaflet-left {
+        bottom: 12px;
+    }
+
+    body.sheet-open .leaflet-bottom.leaflet-left {
+        opacity: 1;
+        pointer-events: auto;
     }
 
     .sheet {
@@ -1229,7 +1322,6 @@ body.theme-dark #network-status.checking {
     .osm-credit {
         display: none;
     }
-
     .peek-btn {
         font-size: 11.5px;
     }
