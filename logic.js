@@ -3558,15 +3558,33 @@ function refreshDeviceStat() {
 }
 
 // ---------- 24.4 ССЫЛКА-ПЛАН, QR-КОД И СКАНЕР ----------
-// План целиком (зона, точка потери, точки поиска) упаковывается в короткий код.
-// Показали QR — группа отсканировала его прямо в приложении или камерой
-// телефона, и на телефоне открылся тот же план. Сервер для этого не нужен.
-function buildPlan(maxPoints) {
-    let pts = (zones || []);
+// План целиком (зона, точка потери, точки поиска, порядок обхода) упаковывается
+// в короткий код. Показали QR — группа отсканировала его в приложении, и на
+// телефоне открылся тот же план. Сервер для этого не нужен.
+//
+// withManual = true добавляет ручные точки в конец списка. Это нужно, когда в
+// код кладётся МАРШРУТ: номера в маршруте считаются по списку
+// «авто-точки + ручные точки», и на принимающем устройстве этот список должен
+// быть тем же самым, иначе маршрут «съедет».
+function buildPlan(maxPoints, withManual) {
+    let pts = (zones || []).slice();
+    if (withManual && typeof manualPoints !== 'undefined' && manualPoints) {
+        for (const mp of manualPoints) {
+            pts.push({ lat: mp.lat, lng: mp.lng, kind: 'point', prob: 0 });
+        }
+    }
     if (maxPoints && pts.length > maxPoints) {
         // для QR оставляем самые вероятные точки — иначе код нечитаем
         pts = pts.slice().sort(function (a, b) { return (b.prob || 0) - (a.prob || 0); }).slice(0, maxPoints);
     }
+    // маршрут и шаг сетки попадают в код, чтобы принимающее устройство получило
+    // не только точки, но и готовый порядок обхода
+    let route = null;
+    if (lastRoute && lastRoute.length >= 2 && pts.length) {
+        route = lastRoute.filter(function (i) { return i >= 0 && i < pts.length; });
+        if (route.length < 2) route = null;
+    }
+    const gs = document.getElementById('grid-step');
     return {
         v: 1,
         prof: (typeof getSubjectProfileId === 'function' ? getSubjectProfileId() : 'generic'),
@@ -3576,7 +3594,9 @@ function buildPlan(maxPoints) {
         pts: pts.map(function (z) {
             return [+z.lat.toFixed(5), +z.lng.toFixed(5), z.kind || 'point',
                 +(z.prob || 0).toFixed(2)];
-        })
+        }),
+        route: route,
+        grid: gs ? parseInt(gs.value, 10) : null
     };
 }
 
@@ -3654,9 +3674,15 @@ function planToCompact(plan) {
         return delta(p[0], p[1]) + ',' + (KIND_CODE[p[2]] || 'o') + ',' +
             Math.max(0, Math.round(p[3] || 0));
     }).join(';');
+    // поля 8 и 9: шаг сетки (метры) и порядок обхода (номера точек в 36-ричной
+    // системе через точку). Старые коды без этих полей читаются по-прежнему.
+    const gridStr = plan.grid ? String(plan.grid) : '-';
+    const routeStr = (plan.route && plan.route.length >= 2)
+        ? plan.route.map(function (i) { return i.toString(36); }).join('.')
+        : '-';
     return ['2', PROF_CODE[plan.prof] || 'g',
         Math.max(0, Math.round(plan.hours == null ? 3 : plan.hours)),
-        q36(alat) + ',' + q36(alng), polyStr, entryStr, ptsStr].join('!');
+        q36(alat) + ',' + q36(alng), polyStr, entryStr, ptsStr, gridStr, routeStr].join('!');
 }
 
 function compactToPlan(str) {
@@ -3688,7 +3714,12 @@ function compactToPlan(str) {
         hours: parseInt(f[2], 10) || 0,
         poly: poly.length >= 3 ? poly : [],
         entry: entry,
-        pts: pts
+        pts: pts,
+        // поля 8 и 9 — шаг сетки и порядок обхода (могут отсутствовать)
+        grid: (f[7] && f[7] !== '-') ? parseInt(f[7], 10) : null,
+        route: (f[8] && f[8] !== '-')
+            ? f[8].split('.').map(function (s) { return parseInt(s, 36); })
+            : null
     };
 }
 
@@ -3706,31 +3737,31 @@ function decodePlanCode(code) {
 // Готовим ссылку для QR: сначала пробуем весь план компактным кодом,
 // если не влезает — оставляем самые вероятные точки (код становится крупнее
 // Готовим ссылку для QR.
-// ОТКУПА: чем КОРОЧЕ код, тем КРУПНЕЕ квадратики QR и тем надёжнее он читается
-// камерой телефона. Поэтому ссылку держим в пределах ~420 знаков (это QR версии
-// примерно 13 — 69 модулей вместо 81 у полного кода). Точки при этом берём
-// самые вероятные, а полный план всегда можно передать файлом или ссылкой.
-function buildQrLink() {
+// ПЕРЕДАЧА ПЛАНА ЧЕРЕЗ QR.
+// В один QR влезает ограниченный объём, а нам нужно передать ВСЁ: зону, точку
+// потери, все точки с вероятностями, шаг сетки и порядок обхода. Поэтому код
+// режется на части по QR_CHUNK знаков, и каждая часть показывается своим
+// QR-кодом: «Код 1 из 3», «Код 2 из 3» и так далее. Часть устроена как
+// 3!<номер>!<всего>!<кусок кода> — принимающее устройство складывает куски и
+// применяет план, когда получены все.
+// Ссылка при этом НЕ режется: в ней помещается весь код целиком, её можно
+// просто переслать в мессенджер.
+const QR_CHUNK = 380;
+
+function buildQrPayload() {
     const base = location.origin + location.pathname;
-    const maxLen = 420;
-    const tries = [15, 10, 6, 3];       // сколько точек пробуем положить
-    let last = null;
-    for (let i = 0; i < tries.length; i++) {
-        const plan = buildPlan(tries[i]);
-        // у контура для QR оставляем не больше 14 точек: он нужен только как
-        // рамка зоны, а каждая точка контура — это +2 знака к длине кода
-        if (plan.poly && plan.poly.length > 14) {
-            const stepP = plan.poly.length / 14;
-            const simplified = [];
-            for (let k = 0; k < 14; k++) simplified.push(plan.poly[Math.floor(k * stepP)]);
-            plan.poly = simplified;
-        }
-        const code = planToCompact(plan);
-        const link = base + '#plan=' + code;
-        last = { link: link, code: code, points: (plan.pts || []).length, reduced: true };
-        if (link.length <= maxLen) return last;
-    }
-    return last;
+    // все точки + ручные (они входят в маршрут), маршрут и шаг сетки — всё в коде
+    const plan = buildPlan(null, true);
+    const code = planToCompact(plan);
+    const parts = [];
+    for (let i = 0; i < code.length; i += QR_CHUNK) parts.push(code.slice(i, i + QR_CHUNK));
+    return {
+        code: code,
+        parts: parts,
+        link: base + '#plan=' + code,
+        points: (plan.pts || []).length,
+        hasRoute: !!(plan.route && plan.route.length >= 2)
+    };
 }
 
 function showQrCode() {
@@ -3742,29 +3773,46 @@ function showQrCode() {
         alert('QR-код недоступен: не загрузился файл vendor/qrcode.min.js');
         return;
     }
-    const made = buildQrLink();
-    const link = made.link;
+    const made = buildQrPayload();
     const overlay = document.getElementById('qr-overlay');
     const box = document.getElementById('qr-box');
     const note = document.getElementById('qr-note');
     const linkInput = document.getElementById('qr-link');
     try {
-        const qr = qrcode(0, 'L');       // уровень L — самый ёмкий
-        qr.addData(link);
-        qr.make();
-        // margin 4 — минимально необходимый «белый пояс» вокруг кода; больше
-        // не нужно, а место на экране дорого: чем крупнее модуль, тем лучше
-        box.innerHTML = qr.createSvgTag({ cellSize: 8, margin: 4, scalable: true });
-        if (linkInput) linkInput.value = link;
+        box.innerHTML = '';
+        made.parts.forEach(function (part, i) {
+            const wrap = document.createElement('div');
+            wrap.className = 'qr-part';
+            const qr = qrcode(0, 'L');       // уровень L — самый ёмкий
+            qr.addData(made.parts.length > 1
+                ? ('3!' + (i + 1) + '!' + made.parts.length + '!' + part)
+                : part);
+            qr.make();
+            // margin 4 — минимальный «белый пояс» вокруг кода
+            wrap.innerHTML = qr.createSvgTag({ cellSize: 8, margin: 4, scalable: true }) +
+                (made.parts.length > 1
+                    ? '<div class="qr-part-cap">Код ' + (i + 1) + ' из ' + made.parts.length + '</div>'
+                    : '');
+            wrap.addEventListener('click', function () { wrap.classList.toggle('qr-full'); });
+            box.appendChild(wrap);
+        });
+        if (linkInput) linkInput.value = made.link;
         if (note) {
-            note.innerHTML = 'Этот код передаёт маршрут целиком: зону поиска, точку потери, ' +
-                'порядок обхода и ' + made.points + ' самых вероятных точек. Наводите камеру ' +
-                'на код ЦЕЛИКОМ с расстояния 15–25 см, яркость экрана на максимум. ' +
-                '<b>Нажмите на код</b> — он раскроется на весь экран, так его поймать легче ' +
-                'всего. Не читается — отправьте ссылку ниже в мессенджер и откройте её на телефоне.';
+            let text = 'Этот код передаёт маршрут целиком: зону поиска, точку потери, ' +
+                'порядок обхода и все ' + made.points + ' точек с вероятностями.' +
+                (made.hasRoute ? '' : ' Маршрут пока не построен — передаются зона и точки.');
+            if (made.parts.length > 1) {
+                text += ' Код не влез в один квадрат, поэтому он разбит на ' + made.parts.length +
+                    ' части: наведите камеру на них ПО ОЧЕРЕДИ, начиная с первой.';
+            }
+            text += ' Наводите целиком с расстояния 15–25 см, яркость экрана на максимум. ' +
+                '<b>Нажмите на код</b> — он раскроется на весь экран.';
+            text += ' Если код не читается, на телефоне нажмите «Сканировать QR» и вставьте ' +
+                'ссылку в поле.';
+            note.innerHTML = text;
         }
     } catch (e) {
-        box.innerHTML = '<div class="hint">План слишком большой для одного QR-кода (' + link.length +
+        box.innerHTML = '<div class="hint">План слишком большой для QR-кода (' + made.code.length +
             ' знаков). Уберите лишние точки из списка (кнопка «×») и попробуйте снова.</div>';
         if (note) note.textContent = '';
     }
@@ -3793,11 +3841,28 @@ function applyPlanCode(code) {
         } catch (e) { }
     }
     if (plan.entry) setEntryPoint(plan.entry[0], plan.entry[1]);
+    if (plan.grid) {
+        const g = document.getElementById('grid-step');
+        if (g) g.value = String(plan.grid);
+    }
     if (plan.pts && plan.pts.length) {
         zones = plan.pts.map(function (p) {
             return { lat: p[0], lng: p[1], kind: p[2], prob: p[3], score: 50, cells: 1, cellList: null };
         });
         renderZones(zones);
+    }
+    // Порядок обхода: рисуем готовый маршрут, если он был в коде. Номера в
+    // маршруте считаются по тому же списку точек, что приехал в коде.
+    if (plan.route && zones.length) {
+        const idx = plan.route.filter(function (i) { return i >= 0 && i < zones.length; });
+        if (idx.length >= 2) {
+            routePoints = zones.slice();
+            let len = 0;
+            const K = buildDistanceMatrix(routePoints.map(function (z) { return { lat: z.lat, lng: z.lng }; }));
+            for (let i = 0; i < idx.length - 1; i++) len += K[idx[i]][idx[i + 1]];
+            drawRoute(idx, len);
+            console.log('[APP] Маршрут из кода: точек', idx.length, '| длина', (len / 1000).toFixed(2), 'км');
+        }
     }
     console.log('[APP] План загружен: точек', (plan.pts || []).length);
     return true;
@@ -3989,21 +4054,58 @@ function stopQrScanner() {
     if (v) v.srcObject = null;
     const ov = document.getElementById('scan-overlay');
     if (ov) ov.classList.add('hidden');
+    resetScanParts();      // недособранные части многочастного кода не храним
+}
+
+// План может приехать несколькими QR-кодами. Тогда каждая часть помечена как
+// 3!<номер>!<всего>!<кусок кода>. Складываем куски и применяем план, когда
+// получены все части.
+let scanParts = {};
+let scanPartsTotal = 0;
+
+function resetScanParts() {
+    scanParts = {};
+    scanPartsTotal = 0;
 }
 
 function onQrFound(text) {
     const raw = String(text || '').trim();
     let code = null;
 
+    // 0) часть многочастного кода (и в виде ссылки, и как голый текст)
+    let chunkMatch = /(?:[#&]plan=)?(3![^\s]+)/.exec(raw);
+    if (chunkMatch) {
+        const fields = chunkMatch[1].split('!');
+        const num = parseInt(fields[1], 10);
+        const total = parseInt(fields[2], 10);
+        const chunk = fields.slice(3).join('!');
+        if (num >= 1 && total >= 1 && num <= total && chunk) {
+            scanPartsTotal = total;
+            scanParts[num] = chunk;
+            const got = Object.keys(scanParts).length;
+            if (got < total) {
+                scanSetStatus('Получена часть ' + got + ' из ' + total +
+                    '. Наведите камеру на следующий код, не закрывая это окно.');
+                return false;             // продолжаем сканировать
+            }
+            let full = '';
+            for (let i = 1; i <= total; i++) full += scanParts[i];
+            resetScanParts();
+            code = full;
+        }
+    }
+
     // 1) обычный случай: в QR лежит ссылка вида .../main.html#plan=2!c!3!...
     //    (в компактном коде есть знаки ! ; , — их тоже берём)
-    let m = /[#&]plan=([^&\s]+)/.exec(raw);
-    if (m) {
-        code = m[1];
-    } else if (/^2!.+/.test(raw)) {
-        code = raw;                       // в QR только сам компактный план
-    } else if (/^[A-Za-z0-9\-_]{40,}$/.test(raw)) {
-        code = raw;                       // старый формат: base64-план целиком
+    if (!code) {
+        let m = /[#&]plan=([^&\s]+)/.exec(raw);
+        if (m) {
+            code = m[1];
+        } else if (/^2!.+/.test(raw)) {
+            code = raw;                       // в QR только сам компактный план
+        } else if (/^[A-Za-z0-9\-_]{40,}$/.test(raw)) {
+            code = raw;                       // старый формат: base64-план целиком
+        }
     }
 
     if (!code) {
@@ -4016,7 +4118,10 @@ function onQrFound(text) {
         return false;
     }
     stopQrScanner();
-    alert('План загружен: зона, точка потери и точки поиска на карте.');
+    resetScanParts();
+    alert('Маршрут загружен: зона поиска, точка потери, точки с вероятностями' +
+        (lastRoute && lastRoute.length ? ' и порядок обхода' : '') +
+        '.\nЧтобы работать без интернета, нажмите «Скачать район» в карточке 6.');
     return true;
 }
 

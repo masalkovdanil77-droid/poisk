@@ -1184,25 +1184,49 @@ body.sheet-open .leaflet-bottom.leaflet-left {
 }
 
 /* Код можно нажать — он раскроется на весь экран. Так модуль кода крупнее
-   всего, и камера второго телефона читает его уверенно. */
-.qr-box.qr-full {
+   всего, и камера второго телефона читает его уверенно.
+   Если план не влез в один код, показывается несколько кодов по очереди. */
+.qr-part {
+    display: grid;
+    place-items: center;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.qr-part:last-child {
+    margin-bottom: 0;
+}
+
+.qr-part svg {
+    width: 100%;
+    height: auto;
+    max-width: 420px;
+    cursor: zoom-in;
+}
+
+.qr-part-cap {
+    font-size: 12.5px;
+    color: #4a4a4a;   /* подпись лежит на белом фоне кода */
+}
+
+.qr-part.qr-full {
     position: fixed;
     inset: 0;
     z-index: 120;
-    border: none;
-    border-radius: 0;
+    margin: 0;
     padding: 8px;
+    background: #fff;
     align-content: center;
     cursor: zoom-out;
 }
 
-.qr-box.qr-full svg {
+.qr-part.qr-full svg {
     max-width: min(96vw, 92vh);
     cursor: zoom-out;
 }
 
-.qr-box svg {
-    cursor: zoom-in;
+.qr-part.qr-full .qr-part-cap {
+    display: none;
 }
 
 /* Сканер */
