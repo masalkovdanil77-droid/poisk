@@ -1,13 +1,4 @@
-/* Service Worker приложения «Поиск людей в лесу».
-   Задача: после первого открытия приложение работает БЕЗ интернета
-   (кэшируются сам сайт и библиотеки Leaflet/Turf).
-
-   ВАЖНО: тайлы карты OpenStreetMap НЕ кэшируются — правилами OSM
-   запрещена предварительная загрузка тайлов и офлайн-использование.
-   Поэтому без интернета карта будет пустой, но программа, маршрут,
-   точки и навигатор (GPS) продолжат работать. */
-
-const CACHE = 'mchs-search-v20';
+const CACHE = 'mchs-search-v21';
 
 const ASSETS = [
   './',
@@ -19,7 +10,7 @@ const ASSETS = [
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  // библиотеки лежат рядом с приложением — внешние CDN не нужны
+
   './vendor/leaflet/leaflet.js',
   './vendor/leaflet/leaflet.css',
   './vendor/leaflet/images/marker-icon.png',
@@ -32,7 +23,7 @@ const ASSETS = [
 self.addEventListener('install', function (e) {
   e.waitUntil(
     caches.open(CACHE).then(function (c) {
-      // каждый файл кэшируем отдельно: если один недоступен, остальные всё равно сохранятся
+
       return Promise.all(ASSETS.map(function (u) {
         return c.add(new Request(u, { mode: 'no-cors' })).catch(function () { });
       }));
@@ -50,7 +41,6 @@ self.addEventListener('activate', function (e) {
   );
 });
 
-/* Запросы, которые НЕ кэшируем: данные OSM (нужна свежесть) и тайлы карты. */
 function skipCache(url) {
   return url.hostname.indexOf('openstreetmap') !== -1 ||
          url.hostname.indexOf('overpass') !== -1 ||
@@ -61,14 +51,12 @@ function skipCache(url) {
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') return;
   var url = new URL(e.request.url);
-  if (skipCache(url)) return; // идём напрямую в сеть
+  if (skipCache(url)) return;
 
   e.respondWith(
     caches.match(e.request).then(function (hit) {
       if (hit) return hit;
-      // Файлы запрашиваются с пометкой версии (?v=138), а в запасе лежат без неё.
-      // Без этой проверки приложение ломалось бы без интернета сразу после
-      // обновления: запрос с ?v= не находился бы в кэше.
+
       var sameOrigin = url.origin === self.location.origin;
       var bare = sameOrigin ? caches.match(url.origin + url.pathname) : Promise.resolve(null);
       return bare.then(function (bareHit) {
@@ -80,7 +68,7 @@ self.addEventListener('fetch', function (e) {
           }
           return resp;
         }).catch(function () {
-          // нет сети: отдаём сохранённую страницу приложения
+
           return caches.match('./main.html');
         });
       });

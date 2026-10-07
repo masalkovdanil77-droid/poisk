@@ -1,24 +1,14 @@
-// ============================================================
-//  Интерфейс «карта + нижняя панель» (как в Яндекс.Картах).
-//  Свёрнутая панель показывает три главные функции, свайп вверх
-//  раскрывает все настройки. Модуль ничего не пересчитывает —
-//  он только управляет панелью и кнопками поверх карты.
-// ============================================================
 (function () {
     'use strict';
 
-    // ---------- проверка, что всё загрузилось ----------
-    // Если библиотеки или сам logic.js не загрузились, приложение выглядит
-    // «зависшим» (видна только надпись «Проверка связи…»). Показываем причину.
-    // Проверяем библиотеки ПОСЛЕ полной загрузки: иначе можно пожаловаться
-    // на «не созданную карту» раньше, чем приложение успело её создать.
+
     function checkBoot() {
         var missing = [];
         if (typeof L === 'undefined') missing.push('vendor/leaflet/leaflet.js — библиотека карты');
         if (typeof turf === 'undefined') missing.push('vendor/turf.min.js — расчёт площади');
         if (typeof qrcode !== 'function') missing.push('vendor/qrcode.min.js — QR-код плана');
         if (typeof jsQR !== 'function') missing.push('vendor/jsqr.min.js — сканер QR');
-        // если карта уже рисует плитки — значит всё работает, предупреждать не о чем
+
         var tilesLoaded = document.querySelectorAll('#map img.leaflet-tile-loaded').length;
         if (!window.__mapReady && tilesLoaded === 0) {
             missing.push('logic.js — карта не появилась');
@@ -56,9 +46,7 @@
         window.addEventListener('load', function () { setTimeout(checkBoot, 1200); });
     }
 
-    // ---------- подсказка про установку на телефон ----------
-    // Показывается один раз и только если приложение открыто в браузере, а не
-    // запущено с домашнего экрана.
+
     (function installHint() {
         var standalone = false;
         try {
@@ -97,8 +85,8 @@
     var mapEl = document.getElementById('map');
     var mqDesktop = window.matchMedia('(min-width: 901px)');
 
-    var collapsedPx = 0;      // высота свёрнутой панели (с учётом safe-area)
-    var expandedPx = 0;       // высота раскрытой панели
+    var collapsedPx = 0;
+    var expandedPx = 0;
     var dragging = false;
     var dragSource = '';
     var startY = 0;
@@ -108,16 +96,14 @@
     var velocity = 0;
     var moved = false;
 
-    // ---------- размеры ----------
-    // Высоту свёрнутой панели не измеряем, а считаем: ручка + строка иконок
-    // + отступ под системную полосу телефона. Так она не «плывёт» при загрузке.
+
     var safeProbe = document.createElement('div');
     safeProbe.style.cssText = 'position:fixed;left:-9999px;bottom:0;width:1px;height:0;' +
         'padding-bottom:env(safe-area-inset-bottom)';
     document.body.appendChild(safeProbe);
 
     function measure() {
-        // высоту отступа под системную полосу читаем из вычисленного padding
+
         var safeBottom = parseFloat(getComputedStyle(safeProbe).paddingBottom) || 0;
         var peekH = (grabber ? grabber.offsetHeight : 26) + (peek ? peek.offsetHeight : 80);
         document.documentElement.style.setProperty('--peek-h', peekH + 'px');
@@ -152,7 +138,7 @@
         applyHeight(!isOpen());
     }
 
-    // ---------- переход к нужной карточке ----------
+
     function openCard(num) {
         openSheet();
         var card = sheet.querySelector('.control-card[data-card="' + num + '"]');
@@ -168,11 +154,11 @@
         }, 260);
     }
 
-    // ---------- свайп панели ----------
+
     function onPointerDown(e) {
         if (mqDesktop.matches) return;
         if (e.button !== undefined && e.button !== 0) return;
-        // по кнопкам главных функций панель не тащим — это обычные кнопки
+
         if (e.target && e.target.closest && e.target.closest('.peek-btn')) return;
         dragging = true;
         moved = false;
@@ -190,7 +176,7 @@
 
     function onPointerMove(e) {
         if (!dragging) return;
-        var dy = startY - e.clientY;               // свайп вверх — плюс
+        var dy = startY - e.clientY;
         if (Math.abs(dy) > 5) moved = true;
         if (moved && e.cancelable) e.preventDefault();
         var h = startH + dy;
@@ -200,7 +186,7 @@
         sheet.style.height = h + 'px';
         var now = Date.now();
         if (now - lastT > 25) {
-            velocity = (lastY - e.clientY) / (now - lastT);   // >0 — вверх
+            velocity = (lastY - e.clientY) / (now - lastT);
             lastY = e.clientY;
             lastT = now;
         }
@@ -214,19 +200,19 @@
         window.removeEventListener('pointerup', onPointerUp);
         window.removeEventListener('pointercancel', onPointerUp);
 
-        if (!moved) {                     // это был тап, а не свайп
+        if (!moved) {
             if (dragSource === 'grabber') {
                 toggleSheet();
             } else {
-                openSheet();              // тап по строке иконок — только раскрыть
+                openSheet();
             }
             return;
         }
 
         var h = sheet.getBoundingClientRect().height;
         var enough = h > collapsedPx + (expandedPx - collapsedPx) * 0.35;
-        if (velocity > 0.45) enough = true;      // резкий свайп вверх
-        if (velocity < -0.45) enough = false;    // резкий свайп вниз
+        if (velocity > 0.45) enough = true;
+        if (velocity < -0.45) enough = false;
         applyHeight(enough);
     }
 
@@ -239,7 +225,7 @@
         });
     }
 
-    // ---------- вспомогательное ----------
+
     function hasPolygon() {
         return (typeof polygonPoints !== 'undefined') && polygonPoints && polygonPoints.length >= 3;
     }
@@ -248,7 +234,7 @@
         return (typeof zones !== 'undefined') && zones && zones.length > 0;
     }
 
-    // ---------- плашка: что сейчас происходит ----------
+
     var actionPill = null;
     var pillTimer = null;
 
@@ -295,7 +281,7 @@
         if (pillTimer) { clearTimeout(pillTimer); pillTimer = null; }
     }
 
-    // следим за поиском вероятных зон: кнопка в панели блокируется, пока идёт работа
+
     function watchZonesSearch() {
         var btn = document.getElementById('find-zones-btn');
         if (!btn) return;
@@ -315,7 +301,7 @@
         }, 500);
     }
 
-    // следим за построением маршрута
+
     function watchRoute() {
         var wrap = document.getElementById('progress-wrap');
         var text = document.getElementById('progress-text');
@@ -337,23 +323,19 @@
         }, 600);
     }
 
-    // Плашку показывает та кнопка, которую реально нажали в панели.
+
     function hookPanelButton(id, watcher) {
         var b = document.getElementById(id);
         if (!b) return;
         b.addEventListener('click', function () {
-            if (b.disabled) return;   // действие не началось — плашку не показываем
+            if (b.disabled) return;
             watcher();
         });
     }
     hookPanelButton('find-zones-btn', watchZonesSearch);
     hookPanelButton('optimize-btn', watchRoute);
 
-    // ---------- нижняя строка иконок ----------
-    // Как в «Яндекс.Картах»/2ГИС: тап по иконке НИЧЕГО не запускает сам,
-    // он переносит пользователя на соответствующую карточку панели, где
-    // видно настройки и большая кнопка действия. Так исключены случайные
-    // запуски поиска зон и построения маршрута без выбора параметров.
+
     function peekAction(card) {
         if (card === '4' && !hasPolygon()) {
             openCard('4');
@@ -368,7 +350,7 @@
         openCard(card);
     }
 
-    // маленькая подсказка внизу экрана (не переключает карточки)
+
     var noteTimer = null;
     function showNote(message) {
         let el = document.getElementById('peek-note');
@@ -390,9 +372,7 @@
         btn.addEventListener('click', function () { peekAction(card); });
     });
 
-    // ---------- режимы работы по клику на карте ----------
-    // Когда включён режим «кликайте по карте», панель убирается,
-    // а сверху появляется подсказка, что делать.
+
     var modeButtons = ['draw-polygon-btn', 'set-entry-btn', 'manual-zones-btn'];
 
     var hintEl = document.createElement('div');
@@ -426,16 +406,14 @@
     });
     syncModeHint();
 
-    // тап по карте закрывает раскрытую панель
+
     if (mapEl) {
         mapEl.addEventListener('click', function () {
             if (isOpen()) closeSheet();
         });
     }
 
-    // ---------- кнопка «Где я» ----------
-    // Показывает текущее положение, точность и время замера.
-    // Сама логика — в logic.js (функция showMyPosition), здесь только вызов.
+
     var locateBtn = document.getElementById('locate-btn');
     if (locateBtn) {
         locateBtn.addEventListener('click', function () {
@@ -447,10 +425,10 @@
         });
     }
 
-    // ---------- старт, поворот экрана ----------
+
     function setup() {
         measure();
-        // #panel в адресе — сразу открыть панель (удобно для проверки вида)
+
         if (location.hash === '#panel' && !mqDesktop.matches) {
             openSheet();
         } else {
@@ -473,7 +451,7 @@
         }, 250);
     });
 
-    // если панель изменила содержимое (тексты кнопок) — пересчитать высоту
+
     if (window.ResizeObserver && peek) {
         new ResizeObserver(function () { measure(); applyHeight(isOpen()); }).observe(peek);
     }

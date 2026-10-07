@@ -1,17 +1,3 @@
-// tsp.worker.js — фоновый поток для тяжёлой TSP-оптимизации
-// Получает матрицу расстояний, время лимита, приоритеты зон.
-// Крутит: ближайший сосед → 2-opt → Or-opt → 2.5-opt → случайные перестановки.
-// Каждые 2 секунды шлёт прогресс. По истечении времени возвращает лучший маршрут.
-//
-// ОПТИМИЗАЦИЯ ПРОИЗВОДИТЕЛЬНОСТИ:
-//  - routeCost считает ТОЛЬКО расстояние (O(n)), без штрафа за приоритет;
-//  - штраф за приоритет (priorityCost) применяется отдельно и редко —
-//    только при сравнении кандидата с текущим лучшим маршрутом;
-//  - 2-opt использует инкрементальную дельту (O(1) на пару) вместо
-//    полного пересчёта маршрута (O(n));
-//  - Or-opt и 2.5-opt тоже считают только расстояние.
-// Это позволяет за 10 минут выполнить сотни тысяч итераций улучшения.
-
 let stopRequested = false;
 
 self.onmessage = function (e) {
@@ -30,10 +16,10 @@ self.onmessage = function (e) {
 };
 
 function runOptimization(data) {
-    const matrix = data.matrix;          // NxN расстояния в метрах
-    const timeLimitMs = data.timeLimitMs; // лимит в мс
-    const priority = data.priority || []; // массив вероятностей зон (0-100)
-    const priorityWeight = data.priorityWeight || 0; // 0..1
+    const matrix = data.matrix;
+    const timeLimitMs = data.timeLimitMs;
+    const priority = data.priority || [];
+    const priorityWeight = data.priorityWeight || 0;
 
     const n = matrix.length;
     if (n < 2) return { route: [0, 0], bestDist: 0 };
@@ -41,7 +27,7 @@ function runOptimization(data) {
     const startTime = Date.now();
     const deadline = startTime + timeLimitMs;
 
-    // --- Стоимость маршрута: ТОЛЬКО длина (O(n)) ---
+
     function routeCost(route) {
         let d = 0;
         for (let i = 0; i < route.length - 1; i++) {
@@ -50,7 +36,7 @@ function runOptimization(data) {
         return d;
     }
 
-    // --- Штраф за приоритет (горячие зоны раньше). Вызывается редко. ---
+
     function priorityCost(route) {
         if (priorityWeight <= 0 || priority.length !== n) return 0;
         let p = 0;
@@ -65,12 +51,12 @@ function runOptimization(data) {
         return p;
     }
 
-    // --- Полная стоимость: длина + штраф (для финального сравнения) ---
+
     function totalCost(route) {
         return routeCost(route) + priorityCost(route);
     }
 
-    // --- Ближайший сосед (стартовое решение) ---
+
     function nearestNeighbor() {
         const visited = new Array(n).fill(false);
         const route = [0];
@@ -119,7 +105,7 @@ function runOptimization(data) {
         return { route, cost };
     }
 
-    // --- Or-opt: перемещение куска длины 1..3 в другое место. ---
+
     function orOpt(route) {
         let cost = routeCost(route);
         let improved = true;
@@ -144,7 +130,7 @@ function runOptimization(data) {
         return { route, cost };
     }
 
-    // --- Полный локальный поиск (только расстояние) ---
+
     function localSearch(route) {
         let r = twoOpt(route);
         route = r.route;
@@ -154,7 +140,7 @@ function runOptimization(data) {
         return { route: r.route, cost: r.cost };
     }
 
-    // --- Старт ---
+
     let bestRoute = nearestNeighbor();
     let bestCost = routeCost(bestRoute);
     let bestTotal = totalCost(bestRoute);
@@ -166,9 +152,9 @@ function runOptimization(data) {
     let lastReport = Date.now();
     let noImproveCount = 0;
 
-    // --- Основной цикл: случайные перестановки + локальный поиск ---
+
     while (Date.now() < deadline && !stopRequested) {
-        // Случайная перестановка двух точек
+
         let candidate = bestRoute.slice();
         const inner = candidate.length - 1;
         if (inner > 2) {
@@ -181,7 +167,7 @@ function runOptimization(data) {
         }
 
         const improved = localSearch(candidate);
-        // сравниваем по полной стоимости (длина + штраф за приоритет)
+
         const candTotal = improved.cost + priorityCost(improved.route);
         if (candTotal < bestTotal) {
             bestRoute = improved.route;
@@ -192,7 +178,7 @@ function runOptimization(data) {
             noImproveCount++;
         }
 
-        // Иногда полный рестарт со случайного маршрута
+
         if (noImproveCount > 1000) {
             const shuffled = [0];
             const rest = [];
@@ -212,7 +198,7 @@ function runOptimization(data) {
             noImproveCount = 0;
         }
 
-        // Отчёт о прогрессе каждые 500 мс
+
         const now = Date.now();
         if (now - lastReport > 500) {
             lastReport = now;
