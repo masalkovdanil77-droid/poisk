@@ -1,6 +1,6 @@
 {
-  "name": "Поиск людей в лесу — расчёт маршрутов",
-  "short_name": "Поиск людей",
+  "name": "Расчёт поисковых маршрутов в лесу",
+  "short_name": "Поиск в лесу",
   "description": "Вероятностная карта поиска потерявшегося и оптимальный маршрут обхода для поисково-спасательных групп",
   "lang": "ru",
   "dir": "ltr",
@@ -8,8 +8,8 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "theme_color": "#1e1b18",
-  "background_color": "#1e1b18",
+  "theme_color": "#f4f4f4",
+  "background_color": "#f4f4f4",
   "icons": [
     {
       "src": "icons/icon-192.png",

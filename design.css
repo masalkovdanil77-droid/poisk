@@ -1,378 +1,252 @@
-/* ==========================================================
-   Поиск людей в лесу — оформление в стиле карт (Яндекс/Google)
-   Светлый интерфейс, крупный системный шрифт, аккуратные кнопки.
-   Телефон: карта на весь экран + панель-шторка снизу.
-   Компьютер: слева панель, справа карта на весь экран.
-   ========================================================== */
+/* ============================================================
+   Поиск людей в лесу — оформление
+   Светлая нейтральная тема в духе ГИС-инструментов.
+   Разделы файла:
+     1. Токены                        6. Результаты и статистика
+     2. Основа и раскладка            7. Карта и элементы Leaflet
+     3. Шапка                         8. Плавающие сообщения
+     4. Панель: шторка и иконки       9. Оверлеи (QR, сканер)
+     5. Разделы, поля, кнопки        10. Адаптив
+   ============================================================ */
+
+/* ---------- 1. Токены ---------- */
+/* Шрифт: Inter (свободная лицензия OFL) лежит в проекте, работает офлайн.
+   YS Text из Яндекс.Карт проприетарный — в проект не кладём. */
+@font-face {
+    font-family: "Inter";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("fonts/inter-cyrillic-wght-normal.woff2") format("woff2");
+    unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@font-face {
+    font-family: "Inter";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("fonts/inter-latin-wght-normal.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                  U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193,
+                  U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 :root {
-    /* тёплая палитра: крем, терракота, оливка — мягко для глаз */
-    --bg: #f4efe6;
-    --surface: #fffdf8;
-    --surface-2: #f7f1e6;
-    --text: #332c24;
-    --text-dim: #7b6f5f;
-    --border: #e2d7c6;
-    --accent: #b26340;          /* терракота вместо резкого синего */
-    --accent-hover: #9c5334;
-    --accent-soft: #f6e7dd;
-    --ok: #5f7a48;
-    --danger: #a4402f;
-    --warn: #b57b1f;
-    --shadow: 0 1px 2px rgba(80, 60, 40, 0.12), 0 1px 3px rgba(80, 60, 40, 0.08);
-    --shadow-lg: 0 -2px 14px rgba(80, 60, 40, 0.18);
-    --radius: 8px;
-    --peek-h: 122px;
+    /* Три базовых цвета темы; все остальные оттенки — их смеси и прозрачности. */
+    --c-ink:    #0a0a0a;   /* 1. почти чёрный */
+    --c-paper:  #ffffff;   /* 2. белый */
+    --c-accent: #196dff;   /* 3. синий Яндекса */
+
+    --bg:            #f4f4f4;
+    --surface:       #ffffff;
+    --surface-2:     #f4f4f4;
+    --surface-3:     #ebebeb;
+    --text:          var(--c-ink);
+    --text-dim:      var(--text);
+    --text-faint:    var(--text);
+    --text-note:     var(--text);
+    --border:        #e8e8e8;
+    --border-2:      #dcdcdc;
+    --border-field:  #8a8a8a;
+    --accent:        var(--c-accent);
+    --accent-text:   #0f5fe0;
+    --accent-hover:  #0b4fc0;
+    --accent-strong: #1666e8;
+    --on-accent:     #ffffff;
+    --accent-weak:   #e8f0ff;
+    --control-bg:    #ffffff;
+    --btn-bg:        #ffffff;
+    --btn-bg-hover:  #f4f4f4;
+    --warn:          #b35900;
+    --warn-weak:     #fff3e5;
+    --danger:        #cc2f24;
+    --danger-weak:   #fdeceb;
+    --shadow-1:      0 1px 3px rgba(0, 0, 0, .13);
+    --shadow-2:      0 8px 24px rgba(0, 0, 0, .18);
+    /* Ритм панели: единственные допустимые отступы, высоты и кегли */
+    --gap:      10px;
+    --gap-lg:   14px;
+    --field-h:  40px;
+    --btn-h:    44px;
+    --label:    14px;
+    --label-sm: 12px;
+    --label-xs: 11px;
+    --r-btn:    12px;
+    --chip-w:   118px;
+    --r-sm: 12px;
+    --r:    14px;
+    --r-lg: 18px;
+    --panel-w: 400px;
+    --peek-h: 100px;
+    --font: "Inter", "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: "SF Mono", Consolas, "Courier New", monospace;
 }
 
-/* Тёмная тёплая тема — включается кнопкой в шапке, выбор запоминается */
 body.theme-dark {
-    --bg: #1e1b18;
-    --surface: #2a2622;
-    --surface-2: #332e29;
-    --text: #f0e8dd;
-    --text-dim: #a99d8d;
-    --border: #40382f;
-    --accent: #d98a5f;
-    --accent-hover: #e69d75;
-    --accent-soft: #3b2f26;
-    --ok: #9cb37f;
-    --danger: #e07a63;
-    --warn: #e0b062;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 -2px 14px rgba(0, 0, 0, 0.5);
+    --bg:            #1b1c1f;
+    --surface:       #212326;
+    --surface-2:     #2c2c2c;
+    --surface-3:     #343434;
+    --text:          #ffffff;
+    --text-dim:      var(--text);
+    --text-faint:    var(--text);
+    --text-note:     var(--text);
+    --border:        #2f3136;
+    --border-2:      #3a3d42;
+    --border-field:  #7c7c7c;
+    --accent:        #196dff;
+    --accent-text:   #6fa8ff;
+    --accent-hover:  #1666e8;
+    --accent-strong: #1666e8;
+    --on-accent:     #ffffff;
+    --accent-weak:   #1d2b45;
+    --control-bg:    #1b1c1f;
+    --btn-bg:        #212326;
+    --btn-bg-hover:  #2c2c2c;
+    --warn:          #e0913a;
+    --warn-weak:     #2e2416;
+    --danger:        #ef6b5e;
+    --danger-weak:   #33201e;
+    --shadow-1:      0 1px 3px rgba(0, 0, 0, .45);
+    --shadow-2:      0 8px 24px rgba(0, 0, 0, .55);
 }
 
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    -webkit-tap-highlight-color: transparent;
-}
+/* ---------- 2. Основа и раскладка ---------- */
+* { box-sizing: border-box; }
 
 html, body {
+    margin: 0;
+    padding: 0;
     height: 100%;
-}
-
-body {
-    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-    font-size: 14px;
-    line-height: 1.4;
-    color: var(--text);
-    background: var(--bg);
     overflow: hidden;
 }
 
-#app-body {
-    position: fixed;
-    inset: 0;
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
 }
+
+#app-body { position: relative; height: 100%; overflow: hidden; }
 
 #map {
     position: absolute;
     inset: 0;
-    z-index: 0;
-    background: #e8eaed;
+    z-index: 1;
+    background: var(--surface-2);
 }
 
-/* ==========================================================
-   Верхняя строка
-   ========================================================== */
+.hidden { display: none !important; }
+.hidden-input { display: none; }
+
+/* ---------- 3. Шапка панели ---------- */
+/* На компьютере это верхняя строка боковой панели (как у Яндекс.Карт),
+   на телефоне — компактная плавающая плашка над картой. */
 #main-header {
-    position: fixed;
-    z-index: 30;
-    top: calc(10px + env(safe-area-inset-top));
-    left: 10px;
-    right: 10px;
+    flex: 0 0 auto;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
-    padding: 10px 14px;
-    border-radius: var(--radius);
+    gap: 6px 12px;
+    padding: 14px 16px 12px;
     background: var(--surface);
-    box-shadow: var(--shadow);
+    border-bottom: 1px solid var(--border);
 }
+
+#main-header > * { pointer-events: auto; }
 
 .header-left {
     display: flex;
+    flex: 1 1 0;
     flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
     min-width: 0;
 }
 
 .header-title {
-    font-size: 16px;
+    display: block;
+    font-size: clamp(16px, 4.4vw, 18px);
     font-weight: 600;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.2;
+    letter-spacing: -.01em;
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+    text-wrap: balance;
 }
 
-.header-subtitle {
-    display: none;
-    font-size: 12.5px;
-    color: var(--text-dim);
-    margin-top: 1px;
-}
+/* Подзаголовок убран: название должно помещаться целиком. */
+.header-subtitle { display: none; }
 
 .header-right {
     display: flex;
     align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
+    gap: 8px;
+    flex: 0 0 auto;
 }
 
-.osm-credit {
-    font-size: 11.5px;
+.net-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-2);
     color: var(--text-dim);
-    text-decoration: none;
-}
-
-.osm-credit:hover {
-    color: var(--accent);
-}
-
-#network-status {
-    font-size: 12px;
-    font-weight: 500;
-    padding: 4px 10px;
-    border-radius: 14px;
-    background: var(--accent-soft);
-    color: var(--accent);
+    font-size: 11.5px;
     white-space: nowrap;
 }
 
-#network-status.offline {
-    background: #fce8e6;
-    color: var(--danger);
-}
-
-/* ==========================================================
-   Кнопки поверх карты
-   ========================================================== */
-.map-fabs {
-    position: fixed;
-    z-index: 25;
-    right: 12px;
-    bottom: calc(var(--peek-h) + 16px + env(safe-area-inset-bottom));
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    transition: bottom 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s;
-}
-
-.fab {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    border: none;
-    background: var(--surface);
-    color: var(--accent);
-    box-shadow: var(--shadow);
-    display: grid;
-    place-items: center;
-    cursor: pointer;
-}
-
-.fab svg {
-    width: 22px;
-    height: 22px;
-}
-
-.fab:hover {
-    background: var(--surface-2);
-}
-
-.fab:active {
-    transform: scale(0.95);
-}
-
-.fab.busy {
-    color: var(--text-dim);
-}
-
-/* Кнопка переключения темы в шапке */
-.theme-btn {
-    width: 36px;
-    height: 36px;
+.net-badge::before {
+    content: "";
     flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
-    border: 1px solid var(--border);
+    background: var(--accent);
+}
+
+.net-badge.offline {
+    color: var(--warn);
+    border-color: var(--border-2);
+    background: var(--warn-weak);
+}
+
+.net-badge.offline::before { background: var(--warn); }
+
+.net-badge.checking { color: var(--text-faint); }
+.net-badge.checking::before { background: var(--text-faint); }
+
+.osm-credit {
+    position: fixed;
+    z-index: 21;
+    right: 12px;
+    bottom: 10px;
+    width: var(--chip-w);
+    padding: 2px 0;
+    border-radius: 8px;
+    text-align: center;
     background: var(--surface);
-    color: var(--accent);
-    display: grid;
-    place-items: center;
-    cursor: pointer;
-}
-
-.theme-btn svg {
-    width: 19px;
-    height: 19px;
-}
-
-.theme-btn:hover {
-    background: var(--surface-2);
-}
-
-/* Строка с моим положением (геолокация без записи трека) */
-#geo-line {
-    font-size: 12.5px;
     color: var(--text-dim);
-    background: var(--surface-2);
-    border-radius: 6px;
-    padding: 8px 10px;
-    line-height: 1.45;
+    font-size: 11px;
+    text-decoration: none;
+    pointer-events: auto;
 }
 
-#geo-line b {
-    color: var(--text);
-}
+.osm-credit:hover { color: var(--text); }
 
-body.sheet-open .map-fabs {
-    opacity: 0;
-    pointer-events: none;
-}
+/* Кнопка темы теперь часть правого стека на карте (класс .fab). */
 
-/* Подсказка «кликайте по карте» */
-.map-hint {
-    position: fixed;
-    z-index: 28;
-    top: calc(72px + env(safe-area-inset-top));
-    left: 12px;
-    right: 74px;
-    padding: 10px 14px;
-    border-radius: var(--radius);
-    background: var(--surface);
-    box-shadow: var(--shadow);
-    color: var(--text);
-    font-size: 13.5px;
-    text-align: center;
-}
-
-body.sheet-open .map-hint {
-    display: none;
-}
-
-/* Блок найденных точек внутри карточки «Вероятные зоны» */
-.control-card .zones-scroll {
-    background: var(--surface-2);
-    border: none;
-    padding: 8px;
-    margin-top: 2px;
-}
-
-.control-card .zones-title {
-    font-size: 13px;
-}
-
-/* Ручной ввод кода в окне сканера */
-#scan-manual {
-    flex: 1 1 auto;
-    min-width: 0;
-    min-height: 40px;
-}
-
-#scan-apply {
-    flex: 0 0 auto;
-}
-
-/* Подсказка про установку приложения на телефон */
-.install-hint {
-    position: fixed;
-    z-index: 80;
-    left: 12px;
-    right: 12px;
-    bottom: calc(var(--peek-h) + 16px + env(safe-area-inset-bottom));
-    padding: 12px 34px 12px 14px;
-    border-radius: var(--radius);
-    background: var(--surface);
-    border-left: 4px solid var(--accent);
-    color: var(--text);
-    font-size: 13px;
-    line-height: 1.5;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-}
-
-.install-hint b {
-    color: var(--accent);
-}
-
-.install-hint-close {
-    position: absolute;
-    top: 6px;
-    right: 8px;
-    width: 26px;
-    height: 26px;
-    border: none;
-    border-radius: 50%;
-    background: var(--surface-2);
-    color: var(--text-dim);
-    font-size: 17px;
-    line-height: 1;
-    cursor: pointer;
-}
-
-body.sheet-open .install-hint {
-    display: none;
-}
-
-/* Плашка «что сейчас происходит» для действий, запущенных кнопками с карты */
-.action-pill {
-    position: fixed;
-    z-index: 70;
-    left: 12px;
-    right: 12px;
-    bottom: calc(var(--peek-h) + 16px + env(safe-area-inset-bottom));
-    padding: 12px 14px;
-    border: none;
-    border-radius: var(--radius);
-    background: var(--surface);
-    color: var(--text);
-    font-family: inherit;
-    font-size: 13.5px;
-    font-weight: 500;
-    text-align: center;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-    cursor: pointer;
-}
-
-.action-pill.busy {
-    border-left: 4px solid var(--accent);
-}
-
-.action-pill.done {
-    border-left: 4px solid var(--ok);
-}
-
-.action-pill.warn {
-    border-left: 4px solid var(--warn);
-}
-
-body.sheet-open .action-pill {
-    display: none;
-}
-
-/* Подсказка, когда нажали кнопку, но данных ещё не хватает */
-.peek-note {
-    position: fixed;
-    z-index: 60;
-    top: calc(72px + env(safe-area-inset-top));
-    left: 12px;
-    right: 12px;
-    padding: 10px 14px;
-    border-radius: var(--radius);
-    background: #fef7e0;
-    border: 1px solid #f0d9a0;
-    color: #7a5c00;
-    font-size: 13.5px;
-    text-align: center;
-    box-shadow: var(--shadow);
-}
-
-/* ==========================================================
-   Нижняя панель (телефон)
-   ========================================================== */
+/* ---------- 4. Панель: шторка и иконки ---------- */
 .sheet {
     position: fixed;
     z-index: 40;
@@ -382,42 +256,43 @@ body.sheet-open .action-pill {
     height: calc(var(--peek-h) + env(safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
-    background: var(--surface);
-    border-radius: 16px 16px 0 0;
-    box-shadow: var(--shadow-lg);
-    transition: height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
     overflow: hidden;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    box-shadow: var(--shadow-2);
+    transition: height .26s cubic-bezier(.2, .8, .2, 1);
 }
 
-.sheet.dragging {
-    transition: none;
-}
+.sheet.dragging { transition: none; }
 
 .sheet-grabber {
     flex: 0 0 auto;
-    height: 24px;
-    width: 100%;
-    border: none;
-    background: none;
     display: grid;
     place-items: center;
+    width: 100%;
+    height: 22px;
+    padding: 0;
+    border: none;
+    background: none;
     cursor: grab;
-    touch-action: none;
 }
 
 .sheet-grabber span {
-    width: 40px;
+    width: 42px;
     height: 4px;
     border-radius: 2px;
-    background: #bdc1c6;
+    background: var(--border-2);
 }
+
+.sheet-grabber:hover span { background: var(--text-faint); }
 
 .peek-bar {
     flex: 0 0 auto;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    padding: 0 12px 12px;
+    gap: 4px;
+    padding: 0 10px 10px;
     touch-action: none;
 }
 
@@ -425,569 +300,520 @@ body.sheet-open .action-pill {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
-    padding: 10px 6px 9px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: var(--surface);
+    gap: 3px;
+    min-height: 40px;
+    padding: 8px 4px 7px;
+    border: 1px solid transparent;
+    border-radius: var(--r);
+    background: none;
     color: var(--text);
     font-family: inherit;
-    font-size: 12.5px;
+    font-size: var(--label);
     font-weight: 500;
     line-height: 1.15;
     cursor: pointer;
 }
 
-.peek-btn:hover {
-    background: var(--surface-2);
-}
+.peek-btn:hover { background: var(--surface-2); }
+.peek-btn:active { background: var(--surface-3); }
+.peek-btn svg { width: 21px; height: 21px; color: var(--accent); }
 
-.peek-btn svg {
-    width: 24px;
-    height: 24px;
-    color: var(--accent);
-}
-
-.peek-btn.active {
-    background: var(--accent-soft);
-    border-color: var(--accent);
-}
-
-.peek-btn.active svg {
-    color: var(--accent-hover);
-}
-
-/* ==========================================================
-   Содержимое панели
-   ========================================================== */
 .sheet-content {
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 0 12px 12px;
-    scrollbar-width: thin;
-}
-
-.sheet-content::-webkit-scrollbar {
-    width: 8px;
-}
-
-.sheet-content::-webkit-scrollbar-thumb {
-    background: #dadce0;
-    border-radius: 4px;
+    overflow: hidden;
 }
 
 .cards-scroll {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--gap-lg) var(--gap-lg) var(--gap-lg);
 }
 
-/* Карточка: номер в отдельном столбце, поэтому цифры всегда в одну линию */
+/* ---------- 5. Разделы, поля, кнопки ---------- */
 .control-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    padding: var(--gap-lg) 0;
+    border-top: 1px solid var(--border);
 }
 
-.control-card.flash {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-soft);
-}
+.control-card:first-child { padding-top: 0; border-top: none; }
+
+/* Один ритм: у любого прямого потомка раздела одинаковый отступ вниз. */
+.control-card > * { margin: 0 0 var(--gap); }
+.control-card > *:last-child { margin-bottom: 0; }
 
 .card-title {
     display: flex;
-    align-items: baseline;
-    gap: 10px;
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text);
+    align-items: center;
+    gap: var(--gap);
 }
 
 .card-num {
-    flex: 0 0 22px;
-    text-align: center;
-    font-size: 13px;
-    font-weight: 600;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 8px;
+    background: var(--accent-weak);
     color: var(--accent);
-    background: var(--accent-soft);
-    border-radius: 5px;
-    padding: 2px 0;
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
 }
 
 .card-name {
-    flex: 1 1 auto;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -.01em;
 }
 
 .sub-title {
-    margin-top: 6px;
-    padding-top: 10px;
+    padding-top: var(--gap-lg);
     border-top: 1px solid var(--border);
-    font-size: 13px;
+    color: var(--text-faint);
+    font-size: var(--label);
     font-weight: 600;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-}
-
-/* Кнопки: ровные, со скруглением 8 px, высота 40 px */
-.control-card button,
-.btn {
-    min-height: 40px;
-    padding: 9px 14px;
-    border-radius: var(--radius);
-    border: 1px solid transparent;
-    background: var(--accent);
-    color: #fff;
-    font-family: inherit;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s, box-shadow 0.15s;
-}
-
-.control-card button:hover,
-.btn:hover {
-    background: var(--accent-hover);
-}
-
-.control-card button:active,
-.btn:active {
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
-}
-
-.btn-primary {
-    background: var(--accent) !important;
-}
-
-.btn-secondary {
-    background: var(--surface) !important;
-    color: var(--accent) !important;
-    border: 1px solid var(--border) !important;
-}
-
-.btn-secondary:hover {
-    background: var(--accent-soft) !important;
-}
-
-.btn-route {
-    min-height: 48px;
-    font-size: 15px !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.3px !important;
-    width: 100%;
-}
-
-.btn-route:disabled {
-    background: #9aa0a6 !important;
-    cursor: not-allowed;
-}
-
-.hint {
-    font-size: 12.5px;
-    color: var(--text-dim);
-    line-height: 1.45;
+    letter-spacing: 0;
 }
 
 .row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 13.5px;
-    color: var(--text-dim);
+    gap: var(--gap);
 }
 
 .row label {
     flex: 0 0 auto;
+    color: var(--text);
+    font-size: var(--label);
     white-space: nowrap;
 }
 
-.row select {
+.row select,
+.row input[type="text"],
+.row input[type="number"] {
     flex: 1 1 auto;
     min-width: 0;
+    height: var(--field-h);
+    padding: 0 12px;
+    border: 1px solid var(--border-field);
+    border-radius: var(--r-btn);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: var(--label);
+}
+
+.row input[type="number"] { text-align: left; }
+
+.row select:focus,
+.row input:focus,
+.link-row input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-weak);
 }
 
 .row-2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: var(--gap);
 }
 
-select,
-input[type="number"],
-input[type="text"] {
-    min-height: 40px;
-    padding: 8px 10px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: var(--surface);
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    min-height: var(--btn-h);
+    padding: 9px 14px;
+    border: 1px solid var(--border-2);
+    border-radius: var(--r-btn);
+    background: transparent;
     color: var(--text);
     font-family: inherit;
-    font-size: 14px;
-    outline: none;
-}
-
-select:focus,
-input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-soft);
-}
-
-.row input[type="number"] {
-    flex: 0 0 88px;
-}
-
-.hidden {
-    display: none !important;
-}
-
-.hidden-input {
-    display: none;
-}
-
-/* Маленькая текстовая кнопка-ссылка (например «вставить ссылку вручную») */
-.link-btn {
-    display: block;
-    width: 100%;
-    margin: 8px 0 4px;
-    padding: 4px 2px;
-    border: none;
-    background: none;
-    color: var(--accent);
-    font-family: inherit;
-    font-size: 12.5px;
-    text-align: left;
-    text-decoration: underline;
-    text-underline-offset: 2px;
+    font-size: var(--label);
+    font-weight: 500;
+    line-height: 1.25;
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color .12s ease, border-color .12s ease, scale .15s ease-out;
 }
 
-.link-btn:hover {
-    color: var(--accent-hover);
+/* Расстояние между соседними блоками задаёт ритм раздела. */
+
+.btn:hover { background: var(--btn-bg-hover); }
+.btn:active { background: var(--surface-3); }
+.btn:disabled { opacity: .55; cursor: default; }
+
+.btn-primary {
+    background: transparent;
+    border-color: var(--border-2);
+    color: var(--text);
+    font-weight: 500;
+}
+
+.btn-primary:hover { background: var(--surface-3); border-color: var(--border-2); }
+.btn-primary:active { background: var(--surface-3); }
+
+#find-zones-btn { min-height: var(--btn-h); }
+
+.btn-secondary { color: var(--text-dim); }
+.btn-secondary:hover { color: var(--text); }
+
+.btn-route {
+    width: 100%;
+    min-height: var(--btn-h);
+    border: 1px solid var(--border-2);
+    border-radius: var(--r-btn);
+    background: transparent;
+    color: var(--text);
+    font-family: inherit;
+    font-size: var(--label);
+    font-weight: 500;
+    letter-spacing: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color .12s ease, scale .15s ease-out;
+}
+
+.btn-route:hover { background: var(--surface-3); }
+.btn-route:disabled { opacity: .6; cursor: default; }
+.btn-route.busy { background: var(--surface-3); }
+
+#offline-clear-btn {
+    border-color: var(--border-2);
+    color: var(--danger);
+}
+
+#offline-clear-btn:hover { background: var(--danger-weak); }
+
+.hint {
+    color: var(--text-note);
+    font-size: var(--label);
+    line-height: 1.4;
 }
 
 #profile-hint {
-    font-size: 12.5px;
-    line-height: 1.45;
-    min-height: 34px;
-    color: var(--text-dim);
+    padding: var(--gap) var(--gap-lg);
+    border: 1px solid var(--border-2);
+    border-radius: var(--r-btn);
     background: var(--surface-2);
-    border-radius: 6px;
-    padding: 6px 8px;
-}
-
-/* Статусы */
-.nav-status {
-    font-size: 12.5px;
-    line-height: 1.45;
-    color: var(--text-dim);
-    background: var(--surface-2);
-    border-radius: 6px;
-    padding: 8px 10px;
-}
-
-.nav-status b {
     color: var(--text);
+    font-size: var(--label);
 }
 
-.nav-status.on {
-    background: #e6f4ea;
-    color: #0d652d;
+.nav-status {
+    color: var(--text-note);
+    font-size: var(--label);
+    line-height: 1.4;
 }
 
-/* Баннер, если не загрузились файлы приложения */
-.boot-error {
-    position: fixed;
-    z-index: 200;
-    top: calc(72px + env(safe-area-inset-top));
-    left: 12px;
-    right: 12px;
-    max-width: 520px;
-    margin: 0 auto;
-    padding: 14px 16px;
-    border-radius: var(--radius);
-    background: #5a1f14;
-    color: #ffece4;
-    font-size: 13px;
-    line-height: 1.5;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+.nav-status b { color: var(--text); font-weight: 600; }
+.nav-status.on { color: var(--accent); }
+
+
+
+.progress-bar {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--surface-3);
+    overflow: hidden;
 }
 
-.boot-error b {
-    color: #ffd9c9;
+.progress-fill {
+    width: 0;
+    height: 100%;
+    background: var(--accent);
+    transition: width .2s linear;
 }
 
-.boot-error-close {
-    position: absolute;
-    top: 6px;
-    right: 8px;
-    width: 28px;
-    height: 28px;
+.progress-text {
+    margin-top: 5px;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+.link-btn {
+    display: block;
+    width: 100%;
+    margin: 8px 0 2px;
+    padding: 2px 0;
     border: none;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.15);
-    color: #ffece4;
-    font-size: 18px;
-    line-height: 1;
+    background: none;
+    color: var(--accent-text);
+    font-family: inherit;
+    font-size: var(--label);
+    text-align: left;
     cursor: pointer;
 }
 
-.boot-error-close:hover {
-    background: rgba(255, 255, 255, 0.28);
-}
+.link-btn:hover { text-decoration: underline; }
 
-.boot-error i {
-    color: #ffc9b0;
-    font-style: normal;
-}
-
-#network-status.checking {
-    background: var(--surface-2);
-    color: var(--text-dim);
-}
-
-#network-status.offline {
-    background: #f2d9d2;
-    color: #8c2f1c;
-}
-
-body.theme-dark #network-status.offline {
-    background: #4a2318;
-    color: #f0b6a2;
-}
-
-body.theme-dark #network-status.checking {
-    background: var(--surface-2);
-    color: var(--text-dim);
-}
-
-/* Тепловая карта */
-.leaflet-heatmap-legend {
-    background: var(--surface);
-    border-radius: var(--radius);
-    padding: 8px 10px;
-    box-shadow: var(--shadow);
-    font-size: 12px;
-}
-
-/* Список найденных зон */
-.zones-scroll {
+.link-row {
     display: flex;
-    flex-direction: column;
-    background: var(--surface);
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.link-row input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--border-field);
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: var(--label-xs);
+}
+
+.link-row .btn {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 88px;
+    font-size: var(--label);
+}
+
+/* ---------- 6. Результаты и статистика ---------- */
+.zones-scroll {
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 8px 10px;
+    border-radius: var(--r);
+    background: var(--surface);
+    overflow: hidden;
 }
 
 .zones-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-    padding-bottom: 6px;
+    padding: 7px 10px;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 6px;
-}
-
-.zones-empty {
-    color: var(--text-dim);
-    font-size: 12px;
-    line-height: 1.4;
-    padding: 4px 2px;
-    text-align: center;
+    background: var(--surface-2);
+    color: var(--text-faint);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .4px;
+    text-transform: uppercase;
 }
 
 .zones-list {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    font-size: 12.5px;
-    /* видно ровно три точки, дальше список прокручивается колесом мыши */
     max-height: 138px;
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-width: thin;
-}
-
-.zones-list::-webkit-scrollbar {
-    width: 8px;
-}
-
-.zones-list::-webkit-scrollbar-thumb {
-    background: #dadce0;
-    border-radius: 4px;
 }
 
 .zone-item {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 8px;
-    background: var(--surface-2);
-    border-radius: 6px;
-    border-left: 3px solid var(--accent);
-    cursor: pointer;
+    gap: var(--gap);
+    padding: 0 var(--gap) 0 var(--gap-lg);
+    min-height: 36px;
+    border-bottom: 1px solid var(--border);
+    font-size: var(--label-sm);
 }
 
-.zone-item:hover {
-    background: var(--accent-soft);
-}
+.zone-item:last-child { border-bottom: none; }
+.zone-item:hover { background: var(--surface-2); }
 
-.zone-item .zone-num {
-    font-weight: 600;
-    color: var(--text);
-    flex: 0 0 auto;
-}
+.zone-num { color: var(--text-dim); flex: 0 0 auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-.zone-item .zone-pct {
-    font-weight: 600;
+.zone-pct {
     color: var(--accent);
+    font-weight: 600;
     flex: 0 0 auto;
-}
-
-.zone-item .zone-coord {
-    color: var(--text-dim);
-    font-size: 11px;
-    margin-left: auto;
+    white-space: nowrap;
     font-variant-numeric: tabular-nums;
 }
 
-/* Кнопка удаления точки, найденной программой */
+.zone-coord {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-dim);
+    font-family: var(--mono);
+}
+
 .zone-del {
     flex: 0 0 auto;
-    width: 28px;
-    height: 28px;
-    min-height: 28px;
-    padding: 0;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text-dim);
-    font-size: 16px;
+    margin-left: auto;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: none;
+    color: var(--text-faint);
+    font-size: 14px;
     line-height: 1;
     cursor: pointer;
 }
 
-.zone-del:hover {
-    background: #fce8e6;
-    color: var(--danger);
-    border-color: #f5c6c2;
-}
+.zone-del:hover { background: var(--danger-weak); color: var(--danger); }
 
-.zone-group {
-    display: inline-grid;
-    place-items: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    color: #fff;
-    font-size: 11px;
-    font-weight: 600;
-    flex: 0 0 auto;
-}
-
-/* Прогресс */
-.progress-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.progress-bar {
-    width: 100%;
-    height: 8px;
-    background: #e8eaed;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.progress-fill {
-    height: 100%;
-    width: 0;
-    background: var(--accent);
-    transition: width 0.3s;
-}
-
-.progress-text {
-    font-size: 12.5px;
-    color: var(--text-dim);
+.zones-empty {
+    padding: 14px 12px;
+    color: var(--text-faint);
+    font-size: var(--label);
     text-align: center;
 }
 
-/* Итоговые цифры */
 #status-bar {
+    flex: 0 0 auto;
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 3px 12px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 8px 10px;
-    font-size: 12px;
-    color: var(--text-dim);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px 10px;
+    margin: 0 14px;
+    padding: 8px 0 7px;
+    border-top: 1px solid var(--border);
 }
 
-#status-bar .stat {
+/* Ячейка главного числа: подпись сверху, значение с единицей в строку.
+   Селектор с #status-bar перебивает правила .stat, которые идут ниже. */
+#status-bar .stat-main {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 1px;
+    min-width: 0;
+    padding: 0;
+}
+
+#status-bar .stat-main .stat-label {
+    display: block;
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+#status-bar .stat-main .stat-value {
     display: flex;
     align-items: baseline;
-    gap: 6px;
-    min-width: 0;
+    gap: 3px;
+    white-space: nowrap;
 }
 
-#status-bar strong {
-    color: var(--text);
+#status-bar .stat-main strong { font-size: 15px; }
+#status-bar .stat-main .stat-unit { margin-left: 0; }
+
+.stat-meta-line {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    color: var(--text-faint);
+    font-size: var(--label-sm);
+}
+
+.stat-meta-line b {
+    color: var(--text-dim);
     font-weight: 600;
-    margin-left: auto;
     font-variant-numeric: tabular-nums;
 }
 
-#status-bar .stat-unit {
-    font-size: 11.5px;
+.stat {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+    padding: 2px 0;
+}
+
+.stat-label {
     color: var(--text-dim);
+    font-size: var(--label);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-/* ==========================================================
-   Карта: элементы Leaflet
-   ========================================================== */
-.leaflet-div-icon {
-    background: transparent;
-    border: none;
+.stat strong {
+    font-size: 12.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
 }
 
-.leaflet-top.leaflet-right {
-    top: calc(72px + env(safe-area-inset-top));
+.stat-unit {
+    margin-left: 2px;
+    color: var(--text-faint);
+    font-size: 10.5px;
 }
+
+/* Служебная строка цифр теперь описана в .stat-meta-line. */
+
+#geo-line {
+    flex: 0 0 auto;
+    margin: 0 14px;
+    padding: 0 0 10px;
+    color: var(--text-dim);
+    font-size: 11.5px;
+}
+
+#geo-line b { color: var(--accent); }
+
+/* ---------- 7. Карта и элементы Leaflet ---------- */
+.leaflet-container { background: var(--surface-2); font-family: var(--font); }
+
+.leaflet-top.leaflet-right { top: 58px; right: 10px; }
 
 .leaflet-control-zoom {
-    border: none !important;
-    background: transparent !important;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    overflow: hidden;
+    width: 40px !important;
+    border: none !important;
+    border-radius: var(--r) !important;
+    background: var(--control-bg) !important;
+    box-shadow: var(--shadow-1), 0 0 0 1px var(--border) !important;
 }
+
+/* Leaflet добавляет свои отступы контролам — снимаем, чтобы столбец стоял на одной линии */
+.leaflet-right .leaflet-control { margin-right: 0 !important; }
+.leaflet-top .leaflet-control { margin-top: 0 !important; }
 
 .leaflet-control-zoom a,
 .leaflet-bar a {
+    position: relative;
     width: 40px !important;
     height: 40px !important;
     line-height: 40px !important;
-    font-size: 20px !important;
-    font-weight: 400 !important;
-    color: var(--text) !important;
-    border-radius: var(--radius) !important;
-    background: var(--surface) !important;
-    box-shadow: var(--shadow);
     border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: var(--text) !important;
+    font-size: 0 !important;
+    box-shadow: none;
 }
+
+/* Тонкие знаки + и − из двух полосок */
+.leaflet-control-zoom a::before,
+.leaflet-control-zoom a::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    background: currentColor;
+    border-radius: 1px;
+    transform: translate(-50%, -50%);
+}
+
+.leaflet-control-zoom-in::before { width: 14px; height: 1.5px; }
+.leaflet-control-zoom-in::after { width: 1.5px; height: 14px; }
+.leaflet-control-zoom-out::before { width: 14px; height: 1.5px; }
+.leaflet-control-zoom-out::after { display: none; }
+
+.leaflet-control-zoom a + a,
+.leaflet-bar a + a { border-top: 1px solid var(--border) !important; }
 
 .leaflet-control-zoom a:hover,
 .leaflet-bar a:hover {
@@ -995,197 +821,334 @@ body.theme-dark #network-status.checking {
     color: var(--accent) !important;
 }
 
-.leaflet-control-attribution {
-    display: none !important;
-}
+.leaflet-control-attribution { display: none !important; }
 
-/* Линейка расстояния на карте (масштаб): «—— 500 м ——».
-   На телефоне поднимаем её над свёрнутой панелью, а когда панель раскрыта —
-   прячем, чтобы не мешала. */
 .leaflet-bottom.leaflet-left {
-    bottom: calc(var(--peek-h, 96px) + 10px);
-    transition: bottom .28s cubic-bezier(.2, .8, .2, 1);
+    left: auto;
+    right: 10px;
+    bottom: calc(var(--peek-h) + 44px);
+    transition: bottom .26s cubic-bezier(.2, .8, .2, 1);
 }
 
-.leaflet-control-scale {
-    margin: 0 0 0 12px !important;
-}
+.leaflet-control-scale { margin: 0 !important; }
 
 .leaflet-control-scale-line {
-    background: var(--surface) !important;
-    border: 1.5px solid var(--border) !important;
-    border-top: none !important;
+    position: relative;
+    width: var(--chip-w) !important;
+    padding: 4px 0 !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    background: var(--control-bg) !important;
     color: var(--text) !important;
-    font-family: inherit !important;
-    font-size: 11.5px !important;
-    line-height: 1.15 !important;
-    padding: 2px 6px !important;
-    box-shadow: var(--shadow);
-    border-radius: 0 0 6px 6px !important;
+    font-family: var(--font) !important;
+    font-size: 11px !important;
+    line-height: 1.3 !important;
+    text-align: center;
     white-space: nowrap;
+    box-shadow: var(--shadow-1) !important;
 }
 
-body.sheet-open .leaflet-bottom.leaflet-left {
-    opacity: 0;
-    pointer-events: none;
+/* Линия с засечками по краям; подпись по центру, линия не идёт сквозь буквы */
+.leaflet-control-scale-line::before {
+    content: "";
+    position: absolute;
+    left: 7px;
+    right: 7px;
+    top: 50%;
+    height: 8px;
+    margin-top: -4px;
+    opacity: .55;
+    background:
+        linear-gradient(currentColor, currentColor) left center / calc(50% - 26px) 1.5px no-repeat,
+        linear-gradient(currentColor, currentColor) right center / calc(50% - 26px) 1.5px no-repeat,
+        linear-gradient(currentColor, currentColor) left center / 1px 6px no-repeat,
+        linear-gradient(currentColor, currentColor) right center / 1px 6px no-repeat;
 }
+
+body.sheet-open .leaflet-bottom.leaflet-left { opacity: 0; pointer-events: none; }
+
+.map-fabs {
+    position: absolute;
+    z-index: 20;
+    right: 10px;
+    bottom: calc(var(--peek-h) + 12px);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: bottom .26s cubic-bezier(.2, .8, .2, 1);
+}
+
+.fab,
+#locate-btn {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: none;
+    border-radius: var(--r);
+    background: var(--control-bg);
+    color: var(--text);
+    font-size: 15px;
+    cursor: pointer;
+    box-shadow: var(--shadow-1), 0 0 0 1px var(--border);
+}
+
+.fab:hover,
+#locate-btn:hover { background: var(--surface-2); color: var(--accent); }
+
+.fab svg,
+#locate-btn svg { width: 20px; height: 20px; }
+
+.zone-marker {
+    width: 26px;
+    height: 26px;
+    border: 1.5px solid #fff;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 23px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+}
+
+.leaflet-div-icon { background: none; border: none; }
 
 .seg-label {
     position: absolute;
     transform: translate(-50%, -50%);
-    color: var(--danger);
-    font-size: 12.5px;
+    padding: 2px 4px;
+    border-radius: var(--r-sm);
+    background: rgba(255, 255, 255, .88);
+    font-size: 11px;
     font-weight: 600;
     line-height: 1;
     white-space: nowrap;
     pointer-events: none;
-    text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
 }
 
-.zone-marker {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    color: #fff;
+.seg-zone { color: var(--accent); }
+.seg-route { color: var(--danger); }
+
+.leaflet-popup-content-wrapper {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--r-btn) !important;
+    box-shadow: var(--shadow-2) !important;
+    padding: 0 !important;
+    max-width: 240px;
+}
+
+.leaflet-popup-tip { background: var(--surface) !important; }
+
+.leaflet-popup-close-button { color: var(--text) !important; }
+
+.leaflet-popup-content {
+    margin: 10px 12px !important;
+    color: var(--text) !important;
+    font-family: var(--font) !important;
+    font-size: var(--label-sm) !important;
+    line-height: 1.45 !important;
+}
+
+.popup-title {
+    margin-bottom: var(--gap);
+    font-size: 14px;
     font-weight: 600;
-    font-size: 12.5px;
-    border: 2px solid #fff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
-.entry-marker {
+.popup-row {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    background: var(--danger);
-    color: #fff;
-    font-size: 16px;
-    border: 2px solid #fff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 0;
+    border-bottom: 1px solid var(--border);
 }
 
-.group-label-inner {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    color: #fff;
-    font-weight: 600;
-    font-size: 15px;
-    display: grid;
-    place-items: center;
-    border: 2px solid #fff;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-}
+.popup-row:last-of-type { border-bottom: none; }
+.popup-row span { font-size: var(--label-sm); color: var(--text); }
+.popup-row b { font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* Кнопка удаления внутри всплывающей подсказки на карте */
 .popup-del {
-    margin-top: 6px;
+    display: block;
     width: 100%;
-    min-height: 34px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: var(--surface);
+    min-height: 32px;
+    margin-top: var(--gap);
+    border: 1px solid var(--border-2);
+    border-radius: var(--r-btn);
+    background: transparent;
     color: var(--danger);
     font-family: inherit;
-    font-size: 13px;
+    font-size: var(--label);
+    font-weight: 500;
     cursor: pointer;
 }
 
-.popup-del:hover {
-    background: #fce8e6;
+.popup-del:hover { background: var(--danger-weak); }
+
+/* ---------- 8. Плавающие сообщения ---------- */
+.map-hint {
+    position: fixed;
+    z-index: 45;
+    top: 58px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: min(520px, calc(100vw - 24px));
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border-2);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 12.5px;
+    box-shadow: var(--shadow-2);
 }
 
-.leaflet-popup-content {
+.action-pill {
+    position: fixed;
+    z-index: 45;
+    left: 50%;
+    bottom: calc(var(--peek-h) + env(safe-area-inset-bottom) + 12px);
+    transform: translateX(-50%);
+    max-width: calc(100vw - 24px);
+    padding: 9px 14px;
+    border: 1px solid var(--border-2);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: var(--shadow-2);
+    transition: opacity .2s ease;
+}
+
+.action-pill.busy { border-color: var(--accent); color: var(--accent); }
+.action-pill.done { border-color: var(--accent); background: var(--accent); color: #fff; }
+.action-pill.warn { border-color: var(--warn); background: var(--warn-weak); color: var(--warn); }
+
+body.sheet-open .action-pill { opacity: 0; pointer-events: none; }
+
+.peek-note {
+    position: fixed;
+    z-index: 46;
+    left: 50%;
+    bottom: calc(var(--peek-h) + env(safe-area-inset-bottom) + 12px);
+    transform: translateX(-50%);
+    max-width: calc(100vw - 24px);
+    padding: 8px 12px;
+    border-radius: var(--r-sm);
+    background: var(--text);
+    color: var(--surface);
+    font-size: 12.5px;
+    box-shadow: var(--shadow-2);
+}
+
+.install-hint {
+    position: fixed;
+    z-index: 47;
+    left: 50%;
+    bottom: calc(var(--peek-h) + env(safe-area-inset-bottom) + 12px);
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: calc(100vw - 24px);
+    padding: 10px 12px;
+    border: 1px solid var(--border-2);
+    border-radius: var(--r);
+    background: var(--surface);
+    font-size: 12.5px;
+    box-shadow: var(--shadow-2);
+}
+
+.install-hint b { font-weight: 600; }
+
+.install-hint-close,
+.boot-error-close {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: none;
+    color: var(--text-dim);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.install-hint-close:hover,
+.boot-error-close:hover { background: var(--surface-2); color: var(--text); }
+
+.boot-error {
+    position: fixed;
+    z-index: 200;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(520px, calc(100vw - 32px));
+    padding: 16px 18px;
+    border: 1px solid var(--border-2);
+    border-left: 3px solid var(--danger);
+    border-radius: var(--r);
+    background: var(--surface);
     font-size: 13px;
-    line-height: 1.45;
+    line-height: 1.5;
+    box-shadow: var(--shadow-2);
 }
 
-/* ==========================================================
-   QR: показ кода и сканер
-   ========================================================== */
+.boot-error-close { position: absolute; top: 8px; right: 8px; }
+
+.control-card.flash { animation: cardFlash .9s ease; }
+
+@keyframes cardFlash {
+    0% { background: var(--accent-weak); }
+    100% { background: transparent; }
+}
+
+/* ---------- 9. Оверлеи: QR и сканер ---------- */
 .qr-overlay {
     position: fixed;
     inset: 0;
     z-index: 100;
-    background: rgba(32, 33, 36, 0.6);
     display: grid;
     place-items: center;
-    padding: 16px;
+    padding: 14px;
+    background: rgba(16, 26, 36, .58);
 }
 
 .qr-card {
-    background: var(--surface);
-    border-radius: 12px;
-    padding: 18px;
-    max-width: 430px;
-    width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    gap: 10px;
+    width: 100%;
+    max-width: 460px;
     max-height: 92vh;
     overflow-y: auto;
+    padding: 16px;
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-2);
 }
 
-.qr-title {
-    font-size: 17px;
-    font-weight: 600;
-    text-align: center;
-    color: var(--text);
-}
+.qr-title { font-size: 15px; font-weight: 600; text-align: center; }
 
 .qr-box {
     display: grid;
     place-items: center;
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
     padding: 6px;
-}
-
-/* QR-код рисуем как можно крупнее: чем больше точка кода на экране, тем
-   надёжнее его читает камера другого телефона. */
-.qr-box svg {
-    width: 100%;
-    height: auto;
-    max-width: 420px;
-}
-
-/* Строка со ссылкой на план: скопировать или отправить в мессенджер */
-.link-row {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-}
-
-.link-row input {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-size: 12px;
-    padding: 7px 8px;
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface-2);
-    color: var(--text-dim);
-    font-family: inherit;
+    border-radius: var(--r);
+    background: #fff;
 }
 
-.link-row .btn {
-    flex: 0 0 auto;
-    width: auto;
-    padding: 7px 10px;
-    font-size: 12.5px;
-}
-
-/* Код можно нажать — он раскроется на весь экран. Так модуль кода крупнее
-   всего, и камера второго телефона читает его уверенно.
-   Если план не влез в один код, показывается несколько кодов по очереди. */
 .qr-part {
     display: grid;
     place-items: center;
@@ -1193,9 +1156,7 @@ body.sheet-open .leaflet-bottom.leaflet-left {
     margin-bottom: 8px;
 }
 
-.qr-part:last-child {
-    margin-bottom: 0;
-}
+.qr-part:last-child { margin-bottom: 0; }
 
 .qr-part svg {
     width: 100%;
@@ -1204,149 +1165,231 @@ body.sheet-open .leaflet-bottom.leaflet-left {
     cursor: zoom-in;
 }
 
-.qr-part-cap {
-    font-size: 12.5px;
-    color: #4a4a4a;   /* подпись лежит на белом фоне кода */
-}
+.qr-part-cap { color: var(--text-dim); font-size: 12px; }
 
 .qr-part.qr-full {
     position: fixed;
     inset: 0;
     z-index: 120;
+    align-content: center;
     margin: 0;
     padding: 8px;
     background: #fff;
-    align-content: center;
     cursor: zoom-out;
 }
 
-.qr-part.qr-full svg {
-    max-width: min(96vw, 92vh);
-    cursor: zoom-out;
-}
+.qr-part.qr-full svg { max-width: min(96vw, 92vh); cursor: zoom-out; }
+.qr-part.qr-full .qr-part-cap { display: none; }
 
-.qr-part.qr-full .qr-part-cap {
-    display: none;
-}
-
-/* Сканер */
 .scan-frame {
     position: relative;
     width: 100%;
     aspect-ratio: 3 / 4;
-    background: #202124;
-    border-radius: var(--radius);
+    border-radius: var(--r);
+    background: var(--c-ink);
     overflow: hidden;
 }
 
-.scan-frame video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
+.scan-frame video { width: 100%; height: 100%; object-fit: cover; }
+
+/* ---------- 10. Адаптив ---------- */
+@media (max-width: 900px) {
+    #main-header { padding: 5px 6px 5px 10px; gap: 8px; }
+    .header-subtitle { display: none; }
+    
 }
 
-/* ==========================================================
-   Компьютер: панель слева, карта справа
-   ========================================================== */
+@media (max-width: 380px) {
+    #main-header { gap: 6px; }
+    .header-title { font-size: 13px; }
+    .net-badge { padding: 3px 6px; font-size: 11px; }
+    .osm-credit { display: none; }
+    .cards-scroll { padding: var(--gap-lg) var(--gap-lg) var(--gap-lg); }
+    #status-bar, #geo-line { margin: 0 10px; }
+}
+
 @media (min-width: 901px) {
-    #map {
-        left: 360px;
-    }
-
-    #main-header {
-        left: 372px;
-        top: 12px;
-        right: 12px;
-    }
-
-    .header-subtitle {
-        display: block;
-    }
-
-    .map-fabs {
-        right: 16px;
-        bottom: 28px;
-    }
-
-    .leaflet-top.leaflet-right {
-        top: 76px;
-    }
-
-    /* на компьютере панель сбоку, снизу линейке ничего не мешает */
-    .leaflet-bottom.leaflet-left {
-        bottom: 12px;
-    }
-
-    body.sheet-open .leaflet-bottom.leaflet-left {
-        opacity: 1;
-        pointer-events: auto;
-    }
+    /* Карта — отдельное полотно во всю ширину: панель лежит поверх, как у Яндекса */
+    #map { inset: 0; }
 
     .sheet {
-        left: 0;
-        right: auto;
         top: 0;
+        right: auto;
         bottom: 0;
-        width: 360px;
+        left: 0;
+        width: var(--panel-w);
         height: auto !important;
-        border-radius: 0;
-        box-shadow: none;
+        border-top: none;
         border-right: 1px solid var(--border);
+        border-radius: 0;
+        box-shadow: var(--shadow-2);
+        transition: none;
     }
 
     .sheet-grabber,
-    .peek-bar {
-        display: none;
+    .peek-bar { display: none; }
+
+    .sheet-content { padding-top: 0; }
+
+    .cards-scroll { padding: var(--gap-lg) var(--gap-lg) var(--gap-lg); }
+
+    #status-bar,
+    #geo-line { margin: 0 16px; }
+
+    /* Правый стек на карте: зум сверху, ниже круглые «Где я» и «Тема» */
+    .map-fabs {
+        top: calc(12px + 83px + 8px);
+        right: 12px;
+        bottom: auto;
     }
 
-    .sheet-content {
-        padding: 12px;
-        gap: 12px;
+    .leaflet-top.leaflet-right { top: 12px; right: 12px; }
+
+    /* Атрибуция и масштаб — внизу справа, друг над другом */
+    .leaflet-bottom.leaflet-left {
+        left: auto;
+        right: 12px;
+        bottom: 44px;
     }
 
-    .control-card {
-        padding: 14px 16px;
-    }
+    body.sheet-open .leaflet-bottom.leaflet-left { opacity: 1; pointer-events: auto; }
 
-    .card-title {
-        font-size: 16px;
-    }
+    .osm-credit { right: 12px; bottom: 10px; }
 
-    #status-bar {
-        grid-template-columns: repeat(2, 1fr);
-        position: sticky;
-        bottom: 0;
-    }
+    .map-hint { top: 12px; left: calc(var(--panel-w) + (100vw - var(--panel-w)) / 2); }
 
-    .zones-list {
-        max-height: 138px;      /* на ПК тоже три точки, дальше прокрутка */
-    }
 
-    /* сканер QR нужен только на телефоне */
-    #scan-qr-btn {
-        display: none;
-    }
 
-    .row-2 {
-        grid-template-columns: 1fr;
-    }
+    .qr-card { max-width: 520px; }
 
-    .qr-card {
-        max-width: 480px;
-    }
+    .scan-frame { aspect-ratio: 4 / 3; }
 
-    .scan-frame {
-        aspect-ratio: 4 / 3;
+    #scan-qr-btn { display: none; }
+
+    .peek-note,
+    .install-hint,
+    .action-pill { left: calc(var(--panel-w) + (100vw - var(--panel-w)) / 2); }
+}
+
+/* ---------- 11. Состояния, доступность, движение ---------- */
+/* Наведение осмысленно только там, где есть настоящий указатель: на тач-экране
+   :hover «залипает» после касания и читается как выбранное состояние.
+   Здесь эти состояния возвращаются к значениям покоя. */
+@media (hover: none) {
+    .btn:hover { background: var(--btn-bg); color: var(--text); }
+    .btn-secondary:hover { color: var(--text-dim); }
+    .btn-primary:hover { background: var(--surface-2); color: var(--text); }
+    .btn-route:hover { background: var(--surface-2); color: var(--text); }
+    .theme-btn:hover { background: var(--surface); color: var(--text-dim); }
+    .fab:hover,
+    #locate-btn:hover { background: var(--surface); color: var(--text); }
+    .peek-btn:hover { background: none; }
+    .zone-item:hover { background: transparent; }
+    .zone-del:hover { background: none; color: var(--text-faint); }
+    #offline-clear-btn:hover { background: var(--btn-bg); }
+}
+
+/* Нажатие: 0.96 за 150 мс — и только если человек не просил меньше движения. */
+@media (prefers-reduced-motion: no-preference) {
+    .btn:not(:disabled):active,
+    .btn-route:not(:disabled):active,
+    .btn-primary:not(:disabled):active,
+    .theme-btn:active,
+    .fab:active,
+    #locate-btn:active,
+    .peek-btn:active {
+        scale: 0.96;
+        transition-duration: 150ms;
+        transition-timing-function: ease-out;
     }
 }
 
-/* Мелкие телефоны */
-@media (max-width: 380px) {
+@media (prefers-reduced-motion: reduce) {
+    .sheet,
+    .leaflet-bottom.leaflet-left,
+    .map-fabs,
+    .action-pill,
+    .btn,
+    .btn-route,
+    .progress-fill { transition: none; }
+}
+
+/* Клавиатурный фокус виден во всех темах и не зависит от цвета рамки. */
+.btn:focus-visible,
+.btn-route:focus-visible,
+.theme-btn:focus-visible,
+.fab:focus-visible,
+#locate-btn:focus-visible,
+.peek-btn:focus-visible,
+.link-btn:focus-visible,
+.zone-del:focus-visible,
+.row select:focus-visible,
+.row input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Прокрутка внутри оверлея не утягивает страницу под ним. */
+.qr-card { overscroll-behavior: contain; }
+
+/* Заголовки держат тёплый шрифт плотнее, без «расползания». */
+.header-title,
+.qr-title { letter-spacing: -.01em; }
+
+/* ---------- 12. Тонкая полоса прокрутки в цвет темы ---------- */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-2) transparent;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: var(--border-2);
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-faint);
+    background-clip: content-box;
+}
+
+/* ---------- 13. Телефон: шапка-пилюля над картой ---------- */
+@media (max-width: 900px) {
+    #main-header {
+        position: fixed;
+        z-index: 20;
+        top: 8px;
+        left: 8px;
+        right: 8px;
+        padding: 7px 12px 7px 14px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        box-shadow: var(--shadow-1);
+    }
+
+    .header-title { font-size: 15px; }
+
+    /* зум уходит ниже шапки-пилюли */
+    .leaflet-top.leaflet-right { top: 64px; right: 10px; }
+
     .osm-credit {
-        display: none;
+        right: 10px;
+        bottom: calc(var(--peek-h) + 6px);
     }
-    .peek-btn {
-        font-size: 11.5px;
+
+    .leaflet-bottom.leaflet-left { bottom: calc(var(--peek-h) + 44px); right: 10px; }
+
+    .map-fabs {
+        right: 10px;
+        bottom: calc(var(--peek-h) + 12px);
+        top: auto;
+        gap: 8px;
     }
+
+    #status-bar,
+    #geo-line { margin: 0 12px; }
 }

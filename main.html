@@ -6,20 +6,20 @@
     <meta http-equiv="Cache-Control" content="no-store" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>Поиск людей в лесу — вероятные зоны и маршрут</title>
+    <title>Расчёт поисковых маршрутов в лесу</title>
     <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#1e1b18" />
+    <meta name="theme-color" content="#f4f4f4" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Поиск людей" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" href="icon-192.png" />
-    <link rel="stylesheet" href="design.css?v=77" />
+    <link rel="stylesheet" href="design.css?v=86" />
 
     <!-- БИБЛИОТЕКИ.
          Сначала берём их из папки vendor (тогда приложение работает и без интернета).
-         Если папка vendor не загружена на хостинг — автоматически берём те же
+         Если папка vendor не загружена на хостинг: автоматически берём те же
          библиотеки с запасного адреса. Если и он недоступен, приложение
          показывает понятное сообщение, а не «зависает». -->
     <script>
@@ -36,7 +36,7 @@
             { local: 'vendor/qrcode.min.js', root: 'qrcode.min.js',
               cdn: 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js' }
         ];
-        var APP = ['logic.js?v=140', 'ui-sheet.js?v=17'];
+        var APP = ['logic.js?v=150', 'ui-sheet.js?v=17'];
         window.__libSources = {};
 
         function addCss() {
@@ -112,37 +112,41 @@
     <!-- КАРТА — на весь экран, под всей панелью -->
     <div id="map"></div>
 
-    <!-- ВЕРХНЯЯ СТРОКА: название, связь, авторские права на карту -->
-    <header id="main-header">
-        <div class="header-left">
-            <span class="header-title">Поиск людей в лесу</span>
-            <span class="header-subtitle">Ситуационный центр МЧС / ЛизаАлерт — вероятные зоны и маршрут</span>
-        </div>
-        <div class="header-right">
-            <button id="theme-btn" class="theme-btn" type="button" title="Светлая или тёмная тема"
-                    aria-label="Переключить тему">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5A6.6 6.6 0 0 1 12 3.5Z"
-                          stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-                </svg>
-            </button>
-            <a class="osm-credit" href="https://www.openstreetmap.org/copyright"
-               target="_blank" rel="noopener">© OpenStreetMap</a>
-            <span id="network-status">Проверка связи…</span>
-        </div>
-    </header>
+    <!-- Атрибуция карты: внизу справа, как в Яндекс.Картах -->
+    <a class="osm-credit" id="osm-credit" href="https://www.openstreetmap.org/copyright"
+       target="_blank" rel="noopener">© OpenStreetMap</a>
 
-    <!-- КНОПКИ ПОВЕРХ КАРТЫ -->
+    <!-- КНОПКИ ПОВЕРХ КАРТЫ: вертикальный стек, как в Яндекс.Картах -->
     <div class="map-fabs">
         <button id="locate-btn" class="fab" type="button" title="Где я" aria-label="Где я">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M12 3.2 L18.4 20.2 L12 16.4 L5.6 20.2 Z" fill="currentColor"/>
+                <path d="M12 3.2 L18.4 20.2 L12 16.4 L5.6 20.2 Z" fill="currentColor"
+                      stroke="currentColor" stroke-width="1"
+                      stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+        </button>
+        <button id="theme-btn" class="fab" type="button" title="Светлая или тёмная тема"
+                aria-label="Переключить тему">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5A6.6 6.6 0 0 1 12 3.5Z"
+                      stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
             </svg>
         </button>
     </div>
 
     <!-- НИЖНЯЯ ПАНЕЛЬ: свёрнута в иконки, свайпом вверх — все функции -->
     <aside id="control-panel" class="sheet" aria-label="Панель управления">
+
+        <!-- Шапка панели: название, состояние связи -->
+        <header id="main-header">
+            <div class="header-left">
+                <span class="header-title">Расчёт поисковых маршрутов в лесу</span>
+                <span class="header-subtitle">Ситуационный центр МЧС / ЛизаАлерт</span>
+            </div>
+            <div class="header-right">
+                <span id="network-status" class="net-badge checking">Проверка связи…</span>
+            </div>
+        </header>
 
         <button class="sheet-grabber" id="sheet-grabber" type="button"
                 aria-label="Развернуть панель"><span></span></button>
@@ -152,7 +156,8 @@
             <button class="peek-btn" id="peek-zone" type="button" data-card="1">
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path d="M4 15 L9 5 L18 6 L20 14 L12 20 Z" stroke="currentColor"
-                          stroke-width="1.8" stroke-dasharray="3 2.5" stroke-linejoin="round"/>
+                          stroke-width="1.8" stroke-dasharray="3 2.5"
+                          stroke-linejoin="round" stroke-linecap="round"/>
                 </svg>
                 <span>Зона поиска</span>
             </button>
@@ -183,22 +188,22 @@
                 <div class="control-card" id="card-1" data-card="1">
                     <div class="card-title"><span class="card-num">1</span><span class="card-name">Зона поиска</span></div>
                     <button id="draw-polygon-btn" class="btn">Очертить зону поиска</button>
-                    <div class="hint">Обведите район поиска по карте. Закончите кликом по первой точке.
-                        Нажмите ещё раз, чтобы стереть зону.</div>
+                    <div class="hint">Обведите район поиска по карте, закончите кликом по первой точке.
+                        Повторное нажатие стирает зону.</div>
                 </div>
 
                 <div class="control-card" id="card-2" data-card="2">
                     <div class="card-title"><span class="card-num">2</span><span class="card-name">Точка потери</span></div>
                     <button id="set-entry-btn" class="btn">Указать точку потери</button>
-                    <div class="hint">Где человека видели последний раз. Поставьте кликом по карте —
-                        от неё считаются вероятные зоны.</div>
+                    <div class="hint">Где человека видели последний раз. От этой точки считаются
+                        вероятные зоны.</div>
                 </div>
 
                 <div class="control-card" id="card-3" data-card="3">
                     <div class="card-title"><span class="card-num">3</span><span class="card-name">Ручные точки</span></div>
                     <button id="manual-zones-btn" class="btn">Добавить ручные точки</button>
-                    <div class="hint">Места, которые вы знаете сами: клик по карте — поставить,
-                        клик по точке — убрать. Они попадут в маршрут.</div>
+                    <div class="hint">Места, которые вы знаете сами: клик по карте: поставить,
+                        по точке: убрать. Они попадут в маршрут.</div>
                 </div>
 
                 <div class="control-card" id="card-4" data-card="4">
@@ -232,10 +237,10 @@
                             <option value="250" selected>250 м</option>
                         </select>
                     </div>
-                    <div class="hint">Размер клетки расчёта. Меньше шаг — точнее карта, но считает дольше.</div>
+                    <div class="hint">Меньше шаг: точнее карта, но дольше расчёт.</div>
 
                     <div id="zones-scroll" class="zones-scroll">
-                        <div class="zones-title" title="P — доля вероятности найти человека в этой точке (из 100 % по всей зоне)">Найденные точки</div>
+                        <div class="zones-title" title="P: доля вероятности найти человека в этой точке (из 100 % по всей зоне)">Найденные точки</div>
                         <div id="zones-list" class="zones-list"></div>
                         <div id="zones-empty" class="zones-empty">Точки пока не найдены.<br>Нажмите «Найти вероятные зоны».</div>
                     </div>
@@ -254,52 +259,51 @@
                     </div>
                     <div class="hint">Сначала группа идёт в места с наибольшей вероятностью P,
                         потом в остальные. Приоритет задаётся сам.</div>
-                    <button id="optimize-btn" class="btn-route">ПОИСК МАРШРУТА</button>
+                    <button id="optimize-btn" class="btn-route">Поиск маршрута</button>
                     <div id="progress-wrap" class="progress-wrap hidden">
                         <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
                         <div id="progress-text" class="progress-text">Оптимизация... 0%</div>
                     </div>
 
                     <div class="sub-title">Передача маршрута</div>
-                    <div class="row-2">
-                        <button id="qr-btn" class="btn btn-primary">▦ Показать QR-код</button>
-                        <button id="scan-qr-btn" class="btn btn-secondary">📷 Сканировать QR</button>
-                    </div>
-                    <div id="share-status" class="nav-status">QR-код передаёт на телефон группы
-                        маршрут и план: зону поиска, точку потери и порядок обхода точек.</div>
+                    <button id="qr-btn" class="btn btn-primary">Показать QR-код</button>
+                    <button id="scan-qr-btn" class="btn btn-secondary">Сканировать QR</button>
+                    <div id="share-status" class="nav-status">QR-код передаёт маршрут и план: зону поиска,
+                        точку потери и порядок обхода.</div>
 
-                    <div class="row-2">
-                        <button id="save-plan-btn" class="btn btn-secondary">💾 Сохранить в файл</button>
-                        <button id="load-plan-btn" class="btn btn-secondary">📂 Загрузить из файла</button>
-                    </div>
+                    <button id="save-plan-btn" class="btn btn-secondary">Сохранить в файл</button>
+                    <button id="load-plan-btn" class="btn btn-secondary">Загрузить из файла</button>
                     <input type="file" id="plan-file-input" accept=".json,.mchsplan,application/json" class="hidden-input">
-                    <div id="file-status" class="nav-status">Сохраните план файлом, чтобы открыть его на другом устройстве без интернета.</div>
+                    <div id="file-status" class="nav-status">Файл плана открывается на другом устройстве
+                        без интернета.</div>
                 </div>
 
                 <div class="control-card" id="card-6" data-card="6">
                     <div class="card-title"><span class="card-num">6</span><span class="card-name">Офлайн-карта района</span></div>
-                    <button id="offline-download-btn" class="btn">⬇ Скачать район (нужен интернет)</button>
-                    <button id="offline-show-btn" class="btn btn-secondary">🗺 Показать сохранённую карту</button>
-                    <button id="offline-clear-btn" class="btn btn-secondary">🗑 Удалить сохранённое</button>
+                    <button id="offline-download-btn" class="btn">Скачать район для офлайна</button>
+                    <button id="offline-show-btn" class="btn btn-secondary">Показать сохранённую карту</button>
+                    <button id="offline-clear-btn" class="btn btn-secondary">Удалить сохранённое</button>
                     <div id="offline-status" class="nav-status">Проверяю сохранённую карту…</div>
                 </div>
             </div><!-- /cards-scroll -->
 
-            <!-- Итоговые цифры -->
+            <!-- Итоговые цифры: четыре главных числа в строку, остальное — приглушённой строкой -->
             <div id="status-bar">
-                <div class="stat"><span class="stat-label">Зон</span><strong id="stat-zones">0</strong></div>
-                <div class="stat"><span class="stat-label">Периметр</span><strong id="stat-perimeter">0</strong><span class="stat-unit">м</span></div>
-                <div class="stat"><span class="stat-label">Площадь</span><strong id="stat-area">0</strong><span class="stat-unit">км²</span></div>
-                <div class="stat"><span class="stat-label">Длина пути</span><strong id="stat-distance">0.00</strong><span class="stat-unit">км</span></div>
-                <div class="stat"><span class="stat-label">Расчёт зон</span><strong id="stat-calc">0.00</strong><span class="stat-unit">с</span></div>
-                <div class="stat"><span class="stat-label">Матрица</span><strong id="stat-matrix-time">0.00</strong><span class="stat-unit">с</span></div>
-                <div class="stat"><span class="stat-label">Оптимизация</span><strong id="stat-opt-time">0.00</strong><span class="stat-unit">с</span></div>
-                <div class="stat"><span class="stat-label">Режим</span><strong id="stat-device">—</strong></div>
-                <div class="stat"><span class="stat-label">Версия</span><strong id="stat-version">—</strong></div>
+                <div class="stat stat-main"><span class="stat-label">Зон</span><span class="stat-value"><strong id="stat-zones">0</strong></span></div>
+                <div class="stat stat-main"><span class="stat-label">Площадь</span><span class="stat-value"><strong id="stat-area">0</strong><span class="stat-unit">км²</span></span></div>
+                <div class="stat stat-main"><span class="stat-label">Длина пути</span><span class="stat-value"><strong id="stat-distance">0.00</strong><span class="stat-unit">км</span></span></div>
+                <div class="stat stat-main"><span class="stat-label">Расчёт зон</span><span class="stat-value"><strong id="stat-calc">0.00</strong><span class="stat-unit">с</span></span></div>
+                <div class="stat-meta-line">
+                    <span>периметр <b id="stat-perimeter">0</b> м</span>
+                    <span>матрица <b id="stat-matrix-time">0.00</b> с</span>
+                    <span>оптимизация <b id="stat-opt-time">0.00</b> с</span>
+                    <span>режим <b id="stat-device"></b></span>
+                    <span>версия <b id="stat-version"></b></span>
+                </div>
             </div>
 
             <!-- Геолокация: где я сейчас (без записи трека) -->
-            <div id="geo-line">Моё положение: нажмите <b>◎</b> на карте.</div>
+            <div id="geo-line">Моё положение: кнопка «Где я» на карте.</div>
 
         </div><!-- /sheet-content -->
     </aside>
@@ -312,7 +316,7 @@
                 <video id="scan-video" playsinline muted></video>
             </div>
             <div id="scan-status" class="hint">Наведите камеру на QR-код плана…</div>
-            <button id="scan-manual-toggle" class="link-btn" type="button">Код не читается — вставить ссылку вручную</button>
+            <button id="scan-manual-toggle" class="link-btn" type="button">Код не читается: вставить ссылку вручную</button>
             <div id="scan-manual-box" class="row hidden">
                 <input type="text" id="scan-manual" placeholder="вставьте ссылку или код">
                 <button id="scan-apply" class="btn">Применить</button>
@@ -332,8 +336,7 @@
                 <button id="qr-copy-btn" class="btn btn-secondary" type="button">Копировать</button>
                 <button id="qr-share-btn" class="btn btn-secondary" type="button">Отправить</button>
             </div>
-            <div class="hint">Ссылку можно переслать в мессенджер и открыть на телефоне —
-                тогда сканировать код не нужно.</div>
+            <div class="hint">Ссылку можно переслать в мессенджер, тогда сканировать код не нужно.</div>
             <button id="qr-close" class="btn">Закрыть</button>
         </div>
     </div>

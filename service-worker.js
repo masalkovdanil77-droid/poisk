@@ -1,4 +1,4 @@
-const CACHE = 'mchs-search-v21';
+const CACHE = 'mchs-search-v31';
 
 const ASSETS = [
   './',
@@ -8,6 +8,8 @@ const ASSETS = [
   './ui-sheet.js',
   './tsp.worker.js',
   './manifest.json',
+  './fonts/inter-cyrillic-wght-normal.woff2',
+  './fonts/inter-latin-wght-normal.woff2',
   './icons/icon-192.png',
   './icons/icon-512.png',
 
@@ -53,24 +55,40 @@ self.addEventListener('fetch', function (e) {
   var url = new URL(e.request.url);
   if (skipCache(url)) return;
 
+  var sameOrigin = url.origin === self.location.origin;
+
+  // Свой домен: сначала сеть, чтобы обновление приложения было видно сразу.
+  // Это убирает баг «старая версия из кэша». Офлайн — кэш (точный → без ?v →
+  // запасной main.html).
+  if (sameOrigin) {
+    e.respondWith(
+      fetch(e.request).then(function (resp) {
+        if (resp && resp.status === 200) {
+          var copy = resp.clone();
+          caches.open(CACHE).then(function (c) { c.put(e.request, copy); }).catch(function () { });
+        }
+        return resp;
+      }).catch(function () {
+        return caches.match(e.request).then(function (hit) {
+          return hit || caches.match(url.origin + url.pathname) || caches.match('./main.html');
+        });
+      })
+    );
+    return;
+  }
+
+  // Чужой домен (не тайлы): кэш → сеть, как было.
   e.respondWith(
     caches.match(e.request).then(function (hit) {
       if (hit) return hit;
-
-      var sameOrigin = url.origin === self.location.origin;
-      var bare = sameOrigin ? caches.match(url.origin + url.pathname) : Promise.resolve(null);
-      return bare.then(function (bareHit) {
-        if (bareHit) return bareHit;
-        return fetch(e.request).then(function (resp) {
-          if (resp && (resp.status === 200 || resp.type === 'opaque')) {
-            var copy = resp.clone();
-            caches.open(CACHE).then(function (c) { c.put(e.request, copy); }).catch(function () { });
-          }
-          return resp;
-        }).catch(function () {
-
-          return caches.match('./main.html');
-        });
+      return fetch(e.request).then(function (resp) {
+        if (resp && (resp.status === 200 || resp.type === 'opaque')) {
+          var copy = resp.clone();
+          caches.open(CACHE).then(function (c) { c.put(e.request, copy); }).catch(function () { });
+        }
+        return resp;
+      }).catch(function () {
+        return caches.match('./main.html');
       });
     })
   );

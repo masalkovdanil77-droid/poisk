@@ -1,4 +1,4 @@
-const APP_VERSION = '140';
+const APP_VERSION = '150';
 console.log('[APP] версия приложения ' + APP_VERSION);
 
 // ---------- 0. ПРОВЕРКА БИБЛИОТЕК ----------
@@ -22,7 +22,7 @@ function showBootError(missing) {
 }
 
 if (typeof L === 'undefined') {
-    showBootError(['vendor/leaflet/leaflet.js — библиотека карты']);
+    showBootError(['vendor/leaflet/leaflet.js: библиотека карты']);
     throw new Error('Leaflet не загружен');
 }
 
@@ -1297,63 +1297,63 @@ const SUBJECT_PROFILES = {
         cum: [[0.05, 0.08], [0.3, 0.30], [0.8, 0.48], [1.6, 0.62], [3.2, 0.78], [6, 0.90], [12, 0.97], [20, 1]],
         vMax: 1.5,
         tau: 3,
-        note: 'Дети прячутся и молчат — смотреть укрытия, кусты, постройки, машины и дворы.'
+        note: 'Дети прячутся и молчат: смотреть укрытия, кусты, постройки, машины и дворы.'
     },
     'teen': {
         label: 'Подросток (13–17 лет)',
         cum: [[0.05, 0.05], [0.5, 0.18], [1.6, 0.42], [3.2, 0.65], [8, 0.88], [16, 0.97], [30, 1]],
         vMax: 2.5,
         tau: 8,
-        note: 'Уходит далеко и может скрываться — проверять тропы, заброшки и дороги.'
+        note: 'Уходит далеко и может скрываться: проверять тропы, заброшки и дороги.'
     },
     'gatherer': {
         label: 'Взрослый: грибник, ягодник, рыбак, отдыхающий',
         cum: [[0.05, 0.08], [0.5, 0.25], [1, 0.45], [2, 0.65], [3, 0.80], [5, 0.90], [10, 0.96], [20, 0.99], [30, 1]],
         vMax: 1.8,
         tau: 6,
-        note: 'Самая частая группа. Ходит своими тропами недалеко от машины — искать сеть троп и стоянку.'
+        note: 'Самая частая группа. Ходит своими тропами недалеко от машины: искать сеть троп и стоянку.'
     },
     'hiker': {
         label: 'Турист, лыжник, спортсмен (поход, пробежка)',
         cum: [[0.05, 0.04], [1, 0.15], [3, 0.40], [6, 0.65], [12, 0.85], [25, 0.96], [40, 1]],
         vMax: 3.5,
         tau: 14,
-        note: 'Уходит дальше всех — искать широко, в первую очередь вдоль троп, дорог, ЛЭП и берегов.'
+        note: 'Уходит дальше всех: искать широко, в первую очередь вдоль троп, дорог, ЛЭП и берегов.'
     },
     'hunter': {
         label: 'Охотник',
         cum: [[0.05, 0.06], [0.5, 0.22], [1.6, 0.50], [3.2, 0.75], [6, 0.90], [12, 0.97], [25, 1]],
         vMax: 2.2,
         tau: 8,
-        note: 'Сходит с тропы вниз по склону — смотреть ложбины и склоны ниже тропы.'
+        note: 'Сходит с тропы вниз по склону: смотреть ложбины и склоны ниже тропы.'
     },
     'elderly': {
         label: 'Пожилой человек (без потери памяти)',
         cum: [[0.05, 0.06], [0.2, 0.22], [0.8, 0.45], [2.4, 0.65], [4, 0.78], [7.7, 0.95], [15, 1]],
         vMax: 1.4,
         tau: 10,
-        note: 'Идёт по своему обычному маршруту — искать и рядом, и в сторону знакомых мест.'
+        note: 'Идёт по своему обычному маршруту: искать и рядом, и в сторону знакомых мест.'
     },
     'dementia': {
         label: 'Пожилой с потерей памяти (деменция)',
         cum: [[0.05, 0.10], [0.3, 0.25], [0.8, 0.50], [1.6, 0.89], [2.4, 0.94], [5, 1]],
         vMax: 0.9,
         tau: 4,
-        note: 'Идёт по прямой, пока не застрянет — проверять канавы, ручьи, кустарник, места у тропы.'
+        note: 'Идёт по прямой, пока не застрянет: проверять канавы, ручьи, кустарник, места у тропы.'
     },
     'despondent': {
         label: 'Психологически нестабильный / в тяжёлом состоянии',
         cum: [[0.05, 0.12], [0.3, 0.50], [0.8, 0.60], [2.4, 0.72], [8, 0.92], [20, 0.98], [32, 1]],
         vMax: 2.5,
         tau: 20,
-        note: 'Часть рядом с точкой потери, часть — у воды и обрывов. Искать быстро, риск высокий.'
+        note: 'Часть рядом с точкой потери, часть: у воды и обрывов. Искать быстро, риск высокий.'
     },
     'generic': {
         label: 'Неизвестно / общий профиль',
         cum: [[0.05, 0.08], [0.3, 0.20], [1, 0.40], [2, 0.55], [4, 0.70], [8, 0.90], [16, 0.97], [30, 1]],
         vMax: 2.0,
         tau: 10,
-        note: 'О человеке ничего не известно — основной поиск в 1–4 км от точки потери.'
+        note: 'О человеке ничего не известно: основной поиск в 1–4 км от точки потери.'
     }
 };
 
@@ -2114,7 +2114,7 @@ function removeZoneAt(index) {
         if (el && pw) {
             pw.classList.remove('hidden');
             el.textContent = 'Точка «' + ((POINT_KIND_INFO[removed.kind] || POINT_KIND_INFO.point).name) +
-                '» удалена — постройте маршрут заново.';
+                '» удалена: постройте маршрут заново.';
             setTimeout(function () { pw.classList.add('hidden'); }, 6000);
         }
     }
@@ -2164,8 +2164,14 @@ function renderZones(zones) {    clearZones();
                 iconAnchor: [15, 15]
             });
             const marker = L.marker([z.lat, z.lng], { icon }).addTo(map);
-            marker.bindPopup('<b>Точка ' + (i + 1) + '</b><br>Тип: ' + info.name + '<br>Вероятность: ' + probText + '<br>Радиус осмотра: ~' + Math.round(radiusM) + ' м<br>lat: ' + z.lat.toFixed(5) + '<br>lng: ' + z.lng.toFixed(5) +
-                '<br><button class="popup-del" data-i="' + i + '">Удалить эту точку</button>');
+            marker.bindPopup(
+                '<div class="popup-title">Точка ' + (i + 1) + '</div>' +
+                '<div class="popup-row"><span>Тип</span><b>' + info.name + '</b></div>' +
+                '<div class="popup-row"><span>Вероятность</span><b>' + probText + '</b></div>' +
+                '<div class="popup-row"><span>Радиус осмотра</span><b>~' + Math.round(radiusM) + ' м</b></div>' +
+                '<div class="popup-row"><span>Координаты</span><b>' + z.lat.toFixed(5) + ', ' + z.lng.toFixed(5) + '</b></div>' +
+                '<button class="popup-del" data-i="' + i + '">Удалить точку</button>'
+            );
             zoneMarkers.push(marker);
         }
 
@@ -2237,7 +2243,7 @@ document.getElementById('find-zones-btn').addEventListener('click', async functi
         return;
     }
     this.disabled = true;
-    this.textContent = '⏳ Загрузка данных...';
+    this.textContent = 'Загрузка данных…';
 
     try {
 
@@ -2362,7 +2368,7 @@ document.getElementById('find-zones-btn').addEventListener('click', async functi
         alert('Ошибка при поиске зон: ' + e.message);
     } finally {
         this.disabled = false;
-        this.textContent = '🎯 Найти вероятные зоны';
+        this.textContent = 'Найти вероятные зоны';
     }
 });
 
@@ -2502,7 +2508,7 @@ async function runOptimizationOnZones(btn) {
             drawRoute(result.route, result.bestDist);
             btn.disabled = false;
             showRouteNote(pw, fill, text,
-                '⚠ Маршрут найден МГНОВЕННО, потому что Web Worker запрещён при открытии через file://. ' +
+                'Маршрут найден мгновенно, потому что Web Worker запрещён при открытии через file://. ' +
                 'Для полной оптимизации (до ' + Math.round(timeLimitMs / 1000) + ' сек) запустите страницу через локальный сервер: ' +
                 'двойной клик по start.cmd в папке проекта или команда "python -m http.server".',
                 9000);
@@ -2520,7 +2526,7 @@ async function runOptimizationOnZones(btn) {
             drawRoute(result.route, result.bestDist);
             btn.disabled = false;
             showRouteNote(pw, fill, text,
-                '⚠ Web Worker упал — маршрут построен в быстром режиме. Запустите через локальный сервер для полной оптимизации.',
+                'Web Worker упал: маршрут построен в быстром режиме. Запустите через локальный сервер для полной оптимизации.',
                 6000);
             worker = null;
         };
@@ -2648,8 +2654,9 @@ if (navigator.geolocation) {
 
 if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
     window.addEventListener('load', function () {
-        navigator.serviceWorker.register('service-worker.js').then(function () {
+        navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' }).then(function (reg) {
             console.log('[APP] Service Worker зарегистрирован — приложение работает офлайн');
+            if (reg && typeof reg.update === 'function') { reg.update(); }
         }).catch(function (e) {
             console.log('[APP] Service Worker не зарегистрирован:', e.message);
         });
@@ -2840,11 +2847,11 @@ async function downloadOfflineZone() {
         alert('Сначала очертите зону поиска.');
         return;
     }
-    offlineSetStatus('⏳ Скачиваю данные карты для зоны…');
+    offlineSetStatus('Скачиваю карту района…');
     try {
         const terrain = await fetchTerrainData(polygonPoints);
         const n = (terrain.trails || []).length + (terrain.forests || []).length + (terrain.rivers || []).length;
-        if (!n) throw new Error('не удалось получить данные OSM — проверьте интернет');
+        if (!n) throw new Error('не удалось получить данные OSM: проверьте интернет');
 
         let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
         for (const p of polygonPoints) {
@@ -2861,11 +2868,11 @@ async function downloadOfflineZone() {
         await idbSet('zone', pack);
         offlineData = pack;
         showOfflineOverlay();
-        offlineSetStatus('✅ Район сохранён: дорог ' + (terrain.trails || []).length +
+        offlineSetStatus('Район сохранён: дорог ' + (terrain.trails || []).length +
             ', лесов ' + (terrain.forests || []).length + ', рек ' + (terrain.rivers || []).length +
             '.<br>Теперь откроется и без интернета.');
     } catch (e) {
-        offlineSetStatus('⚠ Не удалось скачать карту: ' + e.message);
+        offlineSetStatus('Не удалось скачать карту: ' + e.message);
     }
 }
 
@@ -2883,7 +2890,7 @@ async function loadOfflineZone() {
     try {
         offlineData = await idbGet('zone');
         if (offlineData) {
-            offlineSetStatus('💾 Сохранена карта района от ' +
+            offlineSetStatus('Карта района сохранена: ' +
                 new Date(offlineData.savedAt).toLocaleString() +
                 '.<br>Нажмите «Показать сохранённую карту», чтобы увидеть её.');
         } else {
@@ -2917,7 +2924,7 @@ map.on('tileerror', function () {
     if (tileErrCount === 6 && offlineData && !tileWarned) {
         tileWarned = true;
         showOfflineOverlay();
-        offlineSetStatus('Интернета нет — показываю сохранённую карту района.');
+        offlineSetStatus('Интернета нет: показываю сохранённую карту района.');
     }
 });
 
@@ -3289,9 +3296,9 @@ function showQrCode() {
         if (note) {
             let text = 'Этот код передаёт маршрут целиком: зону поиска, точку потери, ' +
                 'порядок обхода и ' + made.points + ' точек с вероятностями.' +
-                (made.hasRoute ? '' : ' Маршрут пока не построен — передаются зона и точки.');
+                (made.hasRoute ? '' : ' Маршрут пока не построен: передаются зона и точки.');
             if (made.dropped > 0) {
-                text += ' Самые малопероятные ' + made.dropped + ' точек в коды не попали — ' +
+                text += ' Самые малопероятные ' + made.dropped + ' точек в коды не попали: ' +
                     'они есть в ссылке и в файле плана.';
             }
             if (made.parts.length > 1) {
@@ -3299,7 +3306,7 @@ function showQrCode() {
                     ' части: наведите камеру на них ПО ОЧЕРЕДИ, начиная с первой.';
             }
             text += ' Наводите целиком с расстояния 15–25 см, яркость экрана на максимум. ' +
-                '<b>Нажмите на код</b> — он раскроется на весь экран.';
+                '<b>Нажмите на код</b>: он раскроется на весь экран.';
             text += ' Если код не читается, на телефоне нажмите «Сканировать QR» и вставьте ' +
                 'ссылку в поле.';
             note.innerHTML = text;
@@ -3433,7 +3440,7 @@ function exportPlanFile() {
     const el = document.getElementById('file-status');
     if (el) {
         const kb = Math.round(text.length / 1024);
-        el.innerHTML = '💾 Файл сохранён: <b>' + name + '</b> (' + kb + ' КБ, точек ' +
+        el.innerHTML = 'Файл сохранён: <b>' + name + '</b> (' + kb + ' КБ, точек ' +
             (plan.pts || []).length + (plan.route ? ', маршрут есть' : '') +
             (plan.map ? ', с картой района' : '') + ').';
     }
@@ -3451,7 +3458,7 @@ function importPlanFile(file) {
             return;
         }
         if (!plan || !plan.poly) {
-            alert('В файле нет зоны поиска — похоже, это не наш файл плана.');
+            alert('В файле нет зоны поиска: похоже, это не наш файл плана.');
             return;
         }
         if (plan.prof) {
@@ -3504,13 +3511,13 @@ function importPlanFile(file) {
             };
             idbSet('zone', pack).then(function () {
                 offlineData = pack;
-                offlineSetStatus('🗺 Из файла загружена карта района — расчёт работает без интернета.');
+                offlineSetStatus('Из файла загружена карта района: расчёт работает без интернета.');
             }).catch(function () { });
         }
 
         const el = document.getElementById('file-status');
         if (el) {
-            el.innerHTML = '📂 Загружено: точек <b>' + (plan.pts || []).length + '</b>' +
+            el.innerHTML = 'Загружено: точек <b>' + (plan.pts || []).length + '</b>' +
                 (plan.route ? ', маршрут восстановлен' : '') +
                 (plan.map ? ', карта района сохранена' : '') +
                 (plan.savedAt ? '<br><span class="hint">Файл от ' + new Date(plan.savedAt).toLocaleString() + '</span>' : '');
@@ -3657,11 +3664,11 @@ function startQrScanner() {
     const v = document.getElementById('scan-video');
     if (!ov || !v) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert('Камера недоступна. Откройте приложение по адресу https:// (на сайте) — браузер разрешает камеру только там.');
+        alert('Камера недоступна. Откройте приложение по адресу https:// (на сайте): браузер разрешает камеру только там.');
         return;
     }
     if (typeof jsQR !== 'function') {
-        alert('Не загрузился файл vendor/jsqr.min.js — сканер недоступен.');
+        alert('Не загрузился файл vendor/jsqr.min.js: сканер недоступен.');
         return;
     }
     ov.classList.remove('hidden');
@@ -3708,7 +3715,7 @@ function startQrScanner() {
         .catch(function (err) {
             console.log('[SCAN] камера не открылась:', err && err.name);
             let msg = 'Не удалось включить камеру.';
-            if (err && err.name === 'NotAllowedError') msg = 'Вы запретили доступ к камере — разрешите его в настройках браузера.';
+            if (err && err.name === 'NotAllowedError') msg = 'Вы запретили доступ к камере: разрешите его в настройках браузера.';
             if (err && err.name === 'NotFoundError') msg = 'Камера не найдена.';
             scanSetStatus(msg);
         });
@@ -3771,7 +3778,7 @@ function terrainCacheKey(polygonPoints) {
             const val = inp ? inp.value : '';
             if (!val) return;
             if (navigator.share) {
-                navigator.share({ title: 'План поиска', text: 'План поиска — откройте на телефоне', url: val })
+                navigator.share({ title: 'План поиска', text: 'План поиска: откройте на телефоне', url: val })
                     .catch(function () { });
             } else if (navigator.clipboard) {
                 navigator.clipboard.writeText(val).then(function () {
@@ -3793,7 +3800,7 @@ function terrainCacheKey(polygonPoints) {
             const shown = !manualBox.classList.contains('hidden');
             manualBox.classList.toggle('hidden', shown);
             btnManualToggle.textContent = shown
-                ? 'Код не читается — вставить ссылку вручную'
+                ? 'Код не читается: вставить ссылку вручную'
                 : 'Скрыть поле для ссылки';
             if (!shown) {
                 const inp = document.getElementById('scan-manual');
@@ -3849,14 +3856,14 @@ function terrainCacheKey(polygonPoints) {
 })();
 
 
-// ---------- 24.7 ТЕМА ОФОРМЛЕНИЯ (светлая тёплая / тёмная) ----------
+// ---------- 24.7 ТЕМА ОФОРМЛЕНИЯ ----------
 
 const THEME_KEY = 'mchs-theme';
 
 function applyTheme(dark) {
     document.body.classList.toggle('theme-dark', !!dark);
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', dark ? '#1e1b18' : '#f4efe6');
+    if (meta) meta.setAttribute('content', dark ? '#1b1c1f' : '#f4f4f4');
     try { localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light'); } catch (e) { }
     console.log('[APP] Тема:', dark ? 'тёмная' : 'светлая');
 }
@@ -3865,7 +3872,7 @@ function applyTheme(dark) {
     let saved = null;
     try { saved = localStorage.getItem(THEME_KEY); } catch (e) { }
 
-    const dark = saved ? saved === 'dark' : true;
+    const dark = saved ? saved === 'dark' : false;
     applyTheme(dark);
     const btn = document.getElementById('theme-btn');
     if (btn) {
@@ -3925,7 +3932,7 @@ function showMyPosition() {
         if (btn) btn.classList.remove('busy');
         let msg = 'не удалось определить координаты';
         if (err && err.code === 1) msg = 'разрешите доступ к геолокации в браузере';
-        if (err && err.code === 2) msg = 'нет сигнала GPS — выйдите на открытое место';
+        if (err && err.code === 2) msg = 'нет сигнала GPS: выйдите на открытое место';
         if (err && err.code === 3) msg = 'превышено время ожидания сигнала';
         if (el) el.textContent = 'Моё положение: ' + msg + '.';
     }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
