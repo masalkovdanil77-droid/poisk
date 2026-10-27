@@ -1,4 +1,4 @@
-const CACHE = 'mchs-search-v31';
+const CACHE = 'mchs-search-v32';
 
 const ASSETS = [
   './',

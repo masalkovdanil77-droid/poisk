@@ -1,4 +1,4 @@
-const APP_VERSION = '150';
+const APP_VERSION = '151';
 console.log('[APP] версия приложения ' + APP_VERSION);
 
 // ---------- 0. ПРОВЕРКА БИБЛИОТЕК ----------

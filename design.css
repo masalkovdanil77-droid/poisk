@@ -303,7 +303,7 @@ body {
     gap: 3px;
     min-height: 40px;
     padding: 8px 4px 7px;
-    border: 1px solid transparent;
+    border: 1px solid var(--border);
     border-radius: var(--r);
     background: none;
     color: var(--text);
@@ -1392,4 +1392,29 @@ body.sheet-open .action-pill { opacity: 0; pointer-events: none; }
 
     #status-bar,
     #geo-line { margin: 0 12px; }
+}
+
+/* ---------- 14. Телефон: правки мобильного вида ---------- */
+@media (max-width: 900px) {
+    /* Название программы на всю ширину ячейки: убираем балансировку строк,
+       из-за которой обе строки были короткими и справа оставалась пустота. */
+    .header-title {
+        width: 100%;
+        text-wrap: pretty;
+    }
+
+    /* «Где я» и «Тема» — под зумом, а не внизу рядом с линейкой.
+       Зум стоит на 64 px сверху, его высота 83 px, зазор 8 px. */
+    .map-fabs {
+        right: 10px;
+        top: calc(64px + 83px + 8px);
+        bottom: auto;
+        gap: 8px;
+    }
+
+    /* Окно QR на телефоне: оставляем только код и «Закрыть».
+       Сканер (#scan-overlay) не трогаем — там инструкция нужна. */
+    #qr-overlay .qr-card > .hint,
+    #qr-overlay .link-row,
+    #share-status { display: none; }
 }
